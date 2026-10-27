@@ -7,11 +7,19 @@
 import { join } from "node:path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { AuditLog, repoRoot } from "@revops/core";
+import { BigQueryAuditSink, buildConnectors } from "@revops/connectors";
 import { Authenticator } from "./auth";
 import { buildMcpHttpService, buildToolContext, createMcpServer } from "./server";
 
 const baseUrl = process.env.REVOPS_SANDBOX_URL; // unset: config/connectors.yaml decides
-const audit = new AuditLog(process.env.MCP_AUDIT_PATH ?? join(repoRoot(), "var", "audit", "mcp.jsonl"));
+// Locally the audit goes to a file; on Cloud Run (K_SERVICE is set) it is shipped to BigQuery.
+const audit = new AuditLog(process.env.K_SERVICE ? undefined : (process.env.MCP_AUDIT_PATH ?? join(repoRoot(), "var", "audit", "mcp.jsonl")));
+if (process.env.K_SERVICE) {
+  const c = buildConnectors();
+  const sink = new BigQueryAuditSink(c.warehouse, c.cfg.bigquery.audit_dataset);
+  audit.addSink(sink);
+  process.on("SIGTERM", () => void sink.flush().finally(() => process.exit(0)));
+}
 
 if (process.argv.includes("--stdio")) {
   const { ctx, cfg } = buildToolContext({ baseUrl, audit });

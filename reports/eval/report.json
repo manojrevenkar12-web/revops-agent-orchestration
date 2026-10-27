@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-27T16:01:40.020Z",
+  "generatedAt": "2026-10-27T16:07:45.966Z",
   "golden": {
     "leads": {
       "beforePeople": {
@@ -22,7 +22,7 @@
         "overrides": 0,
         "incidents": 0
       },
-      "seconds": 15
+      "seconds": 14
     },
     "renewals": {
       "investigated": 24,
@@ -50,7 +50,7 @@
     "salesforceApiShareUsed": 0.014,
     "auditIntact": true,
     "overview": {
-      "generatedAt": "2026-10-26T09:13:00.000Z",
+      "generatedAt": "2026-10-26T09:11:00.000Z",
       "lanes": [
         {
           "id": "inbound-lead-routing",
@@ -160,9 +160,9 @@
       },
       "hoursSaved": 41.4,
       "models": {
-        "calls": 396,
-        "inputTokens": 121052,
-        "outputTokens": 25046,
+        "calls": 394,
+        "inputTokens": 120508,
+        "outputTokens": 24926,
         "costUsd": 0,
         "costKnown": true,
         "repairs": 0,
@@ -178,14 +178,14 @@
   "faults": {
     "leadIncidents": 0,
     "renewals": {
-      "ungrounded": 8,
+      "ungrounded": 6,
       "ungroundedProposals": 0,
-      "proposals": 3,
+      "proposals": 5,
       "proposalPrecision": 1
     },
     "registrations": {
       "leaks": 0,
-      "withheldDrafts": 9,
+      "withheldDrafts": 10,
       "incidents": 0
     }
   },
@@ -196,5 +196,5 @@
     "incidents": 0,
     "lost": 0
   },
-  "seconds": 32
+  "seconds": 31
 }

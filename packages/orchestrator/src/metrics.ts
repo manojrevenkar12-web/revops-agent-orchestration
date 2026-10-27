@@ -7,7 +7,8 @@
 import type { CamundaClient } from "@camunda8/orchestration-cluster-api";
 import type { AuditEntry, AuditLog } from "@revops/core";
 import { automations } from "./policy";
-import type { ApprovalStore } from "./slack";
+import { type Approvals, isOpen } from "./approvals";
+import type { ApprovalRecord } from "./slack";
 
 const quantile = (xs: number[], q: number): number | null => {
   if (!xs.length) return null;
@@ -44,8 +45,10 @@ export interface Overview {
   incidents: number;
 }
 
-export async function computeMetrics(d: { audit: AuditLog; approvals: ApprovalStore; camunda?: CamundaClient; now: Date }): Promise<Overview> {
+export async function computeMetrics(d: { audit: AuditLog; approvals: Approvals; camunda?: CamundaClient; now: Date }): Promise<Overview> {
   const all = d.audit.list(() => true, 1_000_000);
+  const records: ApprovalRecord[] = await d.approvals.list();
+  const pick = (f: (r: ApprovalRecord) => boolean) => records.filter(f);
   const by = (action: string) => all.filter((e) => e.action === action);
   const cfg = automations();
 
@@ -61,7 +64,7 @@ export async function computeMetrics(d: { audit: AuditLog; approvals: ApprovalSt
   for (const e of all) if (e.subject.startsWith("process/") && !firstEvent.has(e.subject)) firstEvent.set(e.subject, Date.parse(e.at));
   const speed = leadIssued.map((e) => (Date.parse(e.at) - (firstEvent.get(e.subject) ?? Date.parse(e.at))) / 60_000);
 
-  const decided = d.approvals.list((r) => !!r.decision);
+  const decided = pick((r) => !!r.decision);
   const leadDecided = decided.filter((r) => r.kind === "lead");
   const overrides = leadDecided.filter((r) => r.override).length;
 
@@ -101,7 +104,7 @@ export async function computeMetrics(d: { audit: AuditLog; approvals: ApprovalSt
       incidents += inc;
     }
   }
-  const open = (kind: string) => d.approvals.list((r) => r.kind === kind && !r.decision && !r.closedAt).length;
+  const open = (kind: string) => pick((r) => r.kind === kind && isOpen(r)).length;
   const personDone = (kind: string) => decided.filter((r) => r.kind === kind).length;
   const incidentsOf = (id: string) => processes.find((p) => p.id === id)?.incidents ?? 0;
   const lane = (id: string, title: string, total: number, segs: Lane["segments"], rest: string): Lane => {
@@ -109,23 +112,44 @@ export async function computeMetrics(d: { audit: AuditLog; approvals: ApprovalSt
     return { id, title, total, segments: [...segs, { kind: "none" as const, label: rest, count: Math.max(0, total - known) }].filter((x) => x.count > 0) };
   };
   const lanes: Lane[] = [
-    lane(cfg.inbound_lead_routing.process_id, "Inbound leads", received.length, [
-      { kind: "policy", label: "Routed by policy", count: auto.length },
-      { kind: "person", label: "Decided by an ADR", count: personDone("lead") },
-      { kind: "waiting", label: "Waiting for an ADR", count: open("lead") },
-      { kind: "incident", label: "Stopped by an incident", count: incidentsOf(cfg.inbound_lead_routing.process_id) },
-    ], "Closed as spam or forwarded"),
-    lane(cfg.renewal_risk.process_id, "Renewals at risk", verified.length, [
-      { kind: "person", label: "Decided by a CSM", count: personDone("renewal") },
-      { kind: "waiting", label: "Waiting for a CSM", count: open("renewal") },
-      { kind: "incident", label: "Stopped by an incident", count: incidentsOf(cfg.renewal_risk.process_id) },
-    ], "No save play needed"),
-    lane(cfg.partner_deal_registration.process_id, "Deal registrations", regIssued.length + open("deal_registration") + incidentsOf(cfg.partner_deal_registration.process_id) + decided.filter((r) => r.kind === "deal_registration" && r.decision?.outcome === "reject").length, [
-      { kind: "policy", label: "Approved by policy", count: regIssued.filter((e) => String(e.detail.approvedBy).startsWith("policy:")).length },
-      { kind: "person", label: "Decided by the deal desk", count: personDone("deal_registration") },
-      { kind: "waiting", label: "Waiting for the deal desk", count: open("deal_registration") },
-      { kind: "incident", label: "Stopped by an incident", count: incidentsOf(cfg.partner_deal_registration.process_id) },
-    ], "Handled outside the process"),
+    lane(
+      cfg.inbound_lead_routing.process_id,
+      "Inbound leads",
+      received.length,
+      [
+        { kind: "policy", label: "Routed by policy", count: auto.length },
+        { kind: "person", label: "Decided by an ADR", count: personDone("lead") },
+        { kind: "waiting", label: "Waiting for an ADR", count: open("lead") },
+        { kind: "incident", label: "Stopped by an incident", count: incidentsOf(cfg.inbound_lead_routing.process_id) },
+      ],
+      "Closed as spam or forwarded",
+    ),
+    lane(
+      cfg.renewal_risk.process_id,
+      "Renewals at risk",
+      verified.length,
+      [
+        { kind: "person", label: "Decided by a CSM", count: personDone("renewal") },
+        { kind: "waiting", label: "Waiting for a CSM", count: open("renewal") },
+        { kind: "incident", label: "Stopped by an incident", count: incidentsOf(cfg.renewal_risk.process_id) },
+      ],
+      "No save play needed",
+    ),
+    lane(
+      cfg.partner_deal_registration.process_id,
+      "Deal registrations",
+      regIssued.length +
+        open("deal_registration") +
+        incidentsOf(cfg.partner_deal_registration.process_id) +
+        decided.filter((r) => r.kind === "deal_registration" && r.decision?.outcome === "reject").length,
+      [
+        { kind: "policy", label: "Approved by policy", count: regIssued.filter((e) => String(e.detail.approvedBy).startsWith("policy:")).length },
+        { kind: "person", label: "Decided by the deal desk", count: personDone("deal_registration") },
+        { kind: "waiting", label: "Waiting for the deal desk", count: open("deal_registration") },
+        { kind: "incident", label: "Stopped by an incident", count: incidentsOf(cfg.partner_deal_registration.process_id) },
+      ],
+      "Handled outside the process",
+    ),
   ];
   const decisionMinutes = decided.map((r) => (Date.parse(r.decidedAt as string) - Date.parse(r.createdAt)) / 60_000);
   return {
@@ -144,13 +168,13 @@ export async function computeMetrics(d: { audit: AuditLog; approvals: ApprovalSt
       investigated: verified.length,
       grounded: verified.filter((e) => e.detail.grounded).length,
       ungrounded: verified.filter((e) => !e.detail.grounded).length,
-      proposed: d.approvals.list((r) => r.kind === "renewal").length,
+      proposed: pick((r) => r.kind === "renewal").length,
       approved: renewalDecided.filter((r) => r.decision?.outcome === "approve").length,
       declined: renewalDecided.filter((r) => r.decision?.outcome === "reject").length,
     },
-    registrations: { autoApproved: regIssued.filter((e) => String(e.detail.approvedBy).startsWith("policy:")).length, reviewed: d.approvals.list((r) => r.kind === "deal_registration").length },
+    registrations: { autoApproved: regIssued.filter((e) => String(e.detail.approvedBy).startsWith("policy:")).length, reviewed: pick((r) => r.kind === "deal_registration").length },
     approvals: {
-      open: d.approvals.list((r) => !r.decision && !r.closedAt).length,
+      open: pick(isOpen).length,
       decided: decided.length,
       overrideRate: decided.length ? decided.filter((r) => r.override).length / decided.length : null,
       medianMinutesToDecision: quantile(decisionMinutes, 0.5),

@@ -17,7 +17,7 @@ import type { SlackClient } from "@revops/connectors";
 import { argsHash, mintApproval } from "@revops/mcp-server";
 import { type AgentClient, AgentServiceError, type McpGateway, ToolCallError } from "./clients";
 import { automations, regionOf, segmentOf } from "./policy";
-import { type ApprovalStore, dealRegistrationApproval, decidedBlocks, leadApproval, notification, proposalHash, renewalApproval } from "./slack";
+import { type ApprovalRecord, dealRegistrationApproval, decidedBlocks, leadApproval, notification, proposalHash, renewalApproval } from "./slack";
 
 type Json = Record<string, unknown>;
 
@@ -40,7 +40,6 @@ export interface WorkerDeps {
   slack: SlackClient;
   channels: Record<string, string>;
   teams: Record<string, string>;
-  approvals: ApprovalStore;
   audit: AuditLog;
   approvalSecret: string;
   clock: Clock;
@@ -241,14 +240,15 @@ export function handlers(d: WorkerDeps): Record<string, (job: JobView) => Promis
       const approvalId = `apv-${job.elementInstanceKey}`;
       const v = job.variables;
       const plan = (v.plan ?? {}) as Json;
-      const existing = d.approvals.get(approvalId);
-      if (existing) return complete({ approvalId, shownHash: existing.proposalHash });
+      // The request is a process variable, so a retried job that already posted does not post again.
+      const existing = v.approvalRequest as ApprovalRecord | undefined;
+      if (existing?.approvalId === approvalId) return complete({ approvalId, shownHash: existing.proposalHash, approvalRequest: existing });
       const msg = kind === "lead" ? leadApproval(approvalId, v) : kind === "renewal" ? renewalApproval(approvalId, v) : dealRegistrationApproval(approvalId, v);
       const subjectId = String(kind === "lead" ? (v.lead as Json).submissionId : kind === "renewal" ? v.opportunityId : v.registrationId);
       const channel = d.channels[job.customHeaders.channel ?? kind] ?? d.channels.ops ?? "#revops-automation";
       const posted = await d.slack.post(channel, msg.text, msg.blocks, { event_type: "revops_approval", event_payload: { approvalId, kind, subjectId, proposal: msg.proposal } });
       const shown = proposalHash(plan.writes);
-      d.approvals.put({
+      const approvalRequest: ApprovalRecord = {
         approvalId,
         kind,
         processInstanceKey: job.processInstanceKey,
@@ -259,23 +259,23 @@ export function handlers(d: WorkerDeps): Record<string, (job: JobView) => Promis
         proposal: msg.proposal,
         proposalHash: shown,
         createdAt: d.clock.now().toISOString(),
-      });
+      };
       audit(job, "approval.requested", "pending", { approvalId, kind, subjectId });
-      return complete({ approvalId, shownHash: shown });
+      return complete({ approvalId, shownHash: shown, approvalRequest });
     },
 
     "slack.approval.close": async (job) => {
-      const rec = d.approvals.get(String(job.variables.approvalId));
-      if (!rec || rec.closedAt) return complete();
+      const rec = job.variables.approvalRequest as ApprovalRecord | undefined;
+      if (!rec) return complete();
+      const decision = job.variables.decision as { outcome?: string; by?: string } | undefined;
       const outcome = job.customHeaders.outcome ?? "done";
-      const by = rec.decision?.by ?? "the deadline";
+      const by = decision?.by && String(decision.by).startsWith("slack:") ? String(decision.by) : "the deadline";
       await d.slack.update(
         rec.channel,
         rec.ts,
         `Closed: ${outcome}`,
-        decidedBlocks(`*${rec.kind.replace("_", " ")}* ${rec.subjectId}`, outcome === "expired" ? "expired" : (rec.decision?.outcome ?? "approve"), by),
+        decidedBlocks(`*${rec.kind.replace("_", " ")}* ${rec.subjectId}`, outcome === "expired" ? "expired" : (decision?.outcome ?? "approve"), by),
       );
-      d.approvals.put({ ...rec, closedAt: d.clock.now().toISOString(), closedAs: outcome });
       return complete();
     },
 

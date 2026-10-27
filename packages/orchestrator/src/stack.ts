@@ -16,7 +16,7 @@ import { buildMcpHttpService } from "@revops/mcp-server";
 import { DEFAULT_KEYS, startSandbox } from "@revops/sandbox";
 import { buildApi } from "./api";
 import { AgentClient, camunda, McpGateway } from "./clients";
-import { FileApprovalStore } from "./slack";
+import { Approvals } from "./approvals";
 import { startWorkers } from "./workers";
 
 export interface StackOptions {
@@ -79,9 +79,8 @@ export async function startStack(opts: StackOptions = {}) {
   const agent = await startAgent(opts.ports?.agent ?? (await freePort()), opts.agentFaults, opts.quiet ?? true);
 
   const client = camunda(`${engineUrl}/v2`);
+  const approvals = new Approvals(client);
   const mcp = new McpGateway(mcpUrl, "orchestrator-dev-token");
-  const approvals = new FileApprovalStore();
-  const seen = new Set<string>();
   let apiUrl = "";
   const api = buildApi({
     camunda: client,
@@ -94,7 +93,6 @@ export async function startStack(opts: StackOptions = {}) {
     slackSigningSecret: DEFAULT_KEYS.slackSigningSecret,
     schedulerToken: "dev-scheduler-token",
     publicBaseUrl: () => apiUrl,
-    seen,
     consoleDir: join(repoRoot(), "apps", "console", "dist"),
   });
   apiUrl = await listen(api, opts.ports?.api);
@@ -104,7 +102,6 @@ export async function startStack(opts: StackOptions = {}) {
     slack: connectors.slack,
     channels: connectors.cfg.slack.channels,
     teams: (connectors.cfg.slack as unknown as { teams: Record<string, string> }).teams ?? {},
-    approvals,
     audit,
     approvalSecret: mcpSvc.cfg.approvals.secret,
     clock,

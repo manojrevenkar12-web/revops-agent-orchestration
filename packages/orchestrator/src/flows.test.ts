@@ -5,6 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildConnectors, ChangeSubscriber, HttpPubSubTransport, MemoryReplayStore } from "@revops/connectors";
 import { OPPORTUNITY_TOPIC, renewalSignalHandler } from "./cdc";
+import { DEFAULT_KEYS, slackSignature } from "@revops/sandbox";
 import { startStack, type Stack } from "./stack";
 
 let s: Stack;
@@ -43,7 +44,7 @@ describe("inbound lead routing", () => {
     expect((again.body.delivered as Array<{ status: number }>).every((d) => d.status === 200)).toBe(true);
     await s.settle();
     expect(instances("inbound-lead-routing")).toHaveLength(40);
-    const waiting = s.approvals.list((a) => a.kind === "lead" && !a.decision);
+    const waiting = await s.approvals.list((a) => a.kind === "lead" && !a.decision);
     expect(waiting.length).toBeGreaterThan(0); // Enterprise always gets a person
     const acted = await post(`${s.sb.url}/_sandbox/people/act`, { interactionsUrl: `${s.apiUrl}/slack/interactions` });
     expect((acted.body.answered as Array<{ status: number }>).every((a) => a.status === 200)).toBe(true);
@@ -102,7 +103,7 @@ describe("renewal risk save play", () => {
     await s.settle(120_000);
     const pis = instances("renewal-risk-save-play");
     expect(pis.length).toBe(Number(scan.body.published));
-    const asked = s.approvals.list((a) => a.kind === "renewal");
+    const asked = await s.approvals.list((a) => a.kind === "renewal");
     expect(asked.length).toBeGreaterThan(0);
     // Every proposal rests on a brief that passed the claim check.
     for (const a of asked) {
@@ -112,13 +113,33 @@ describe("renewal risk save play", () => {
     await post(`${s.sb.url}/_sandbox/people/act`, { interactionsUrl: `${s.apiUrl}/slack/interactions` });
     await s.settle(60_000);
     const ctas = (await inspect("ctas")) as Array<{ referenceId: string }>;
-    const approved = s.approvals.list((a) => a.kind === "renewal" && a.decision?.outcome === "approve");
+    const approved = await s.approvals.list((a) => a.kind === "renewal" && a.decision?.outcome === "approve");
     expect(ctas.filter((c) => c.referenceId.startsWith("renewal-risk-")).length).toBe(approved.length);
     const truth = s.sb.world.truth.renewals;
     // Compared with the truth the platform never sees: proposals are mostly real risks.
     const precision = asked.filter((a) => truth[a.subjectId]?.atRisk).length / asked.length;
     expect(precision).toBeGreaterThan(0.8);
   }, 180_000);
+});
+
+describe("Slack interactions", () => {
+  it("tells a person when the request they click was already decided, and refuses unsigned clicks", async () => {
+    const decided = (await s.approvals.list((a) => !!a.decision))[0];
+    expect(decided).toBeTruthy();
+    const payload = { type: "block_actions", user: { id: "U0LATE" }, actions: [{ action_id: "approve", value: JSON.stringify({ approvalId: decided?.approvalId }) }] };
+    const body = `payload=${encodeURIComponent(JSON.stringify(payload))}`;
+    const ts = String(Math.floor(s.clock.now().getTime() / 1000));
+    const send = (sig: string) =>
+      fetch(`${s.apiUrl}/slack/interactions`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded", "x-slack-request-timestamp": ts, "x-slack-signature": sig },
+        body,
+      }).then(async (r) => ({ status: r.status, body: (await r.json()) as { text?: string } }));
+    const late = await send(slackSignature(DEFAULT_KEYS.slackSigningSecret, ts, body));
+    expect(late.status).toBe(200);
+    expect(late.body.text).toMatch(/no longer open/);
+    expect((await send("v0=forged")).status).toBe(401);
+  });
 });
 
 describe("renewal signals from change data capture", () => {

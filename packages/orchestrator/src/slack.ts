@@ -5,8 +5,6 @@
  * When the person approves, the approval token is issued only if the changes about to be written still hash to
  * what they saw. Message metadata (event_type revops_approval) lets other tools find open approvals.
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
 import { canonical, sha256 } from "@revops/core";
 
 type Json = Record<string, unknown>;
@@ -28,34 +26,6 @@ export interface ApprovalRecord {
   override?: boolean;
   closedAt?: string;
   closedAs?: string;
-}
-
-export interface ApprovalStore {
-  get(id: string): ApprovalRecord | undefined;
-  put(r: ApprovalRecord): void;
-  list(filter?: (r: ApprovalRecord) => boolean): ApprovalRecord[];
-}
-
-/** File-backed for local runs (one JSON line per change, last one wins); production keeps the same records in Firestore. */
-export class FileApprovalStore implements ApprovalStore {
-  private map = new Map<string, ApprovalRecord>();
-  constructor(private readonly path?: string) {
-    if (path && existsSync(path)) for (const l of readFileSync(path, "utf8").split("\n").filter(Boolean)) this.map.set((JSON.parse(l) as ApprovalRecord).approvalId, JSON.parse(l));
-    if (path) {
-      mkdirSync(dirname(path), { recursive: true });
-      if (!existsSync(path)) writeFileSync(path, "");
-    }
-  }
-  get(id: string) {
-    return this.map.get(id);
-  }
-  put(r: ApprovalRecord) {
-    this.map.set(r.approvalId, r);
-    if (this.path) appendFileSync(this.path, `${JSON.stringify(r)}\n`);
-  }
-  list(filter: (r: ApprovalRecord) => boolean = () => true) {
-    return [...this.map.values()].filter(filter);
-  }
 }
 
 export const proposalHash = (writes: unknown) => sha256(canonical(writes ?? null));

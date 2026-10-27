@@ -16,10 +16,12 @@ import type { AuditLog, Clock } from "@revops/core";
 import { safeEqual } from "@revops/core";
 import { type SlackClient, verifyHubspotV3, verifySlack } from "@revops/connectors";
 import Fastify, { type FastifyInstance } from "fastify";
+import { OAuth2Client } from "google-auth-library";
 import type { McpGateway } from "./clients";
 import { computeMetrics } from "./metrics";
 import { automations, dealRegistrationPolicy, leadPolicy, renewalPolicy } from "./policy";
-import { type ApprovalStore, decidedBlocks } from "./slack";
+import { type Approvals, isOpen } from "./approvals";
+import { decidedBlocks } from "./slack";
 
 type Json = Record<string, unknown>;
 
@@ -27,14 +29,15 @@ export interface ApiDeps {
   camunda: CamundaClient;
   mcp: McpGateway;
   slack: SlackClient;
-  approvals: ApprovalStore;
+  approvals: Approvals;
   audit: AuditLog;
   clock: Clock;
   hubspotSecret: string;
   slackSigningSecret: string;
-  schedulerToken: string;
+  schedulerToken?: string;
+  schedulerServiceAccount?: string; // production: verify Cloud Scheduler's OIDC token for this account
+  schedulerAudience?: string;
   publicBaseUrl: () => string;
-  seen: { has: (k: string) => boolean; add: (k: string) => void };
   consoleDir?: string;
   engineRecordsUrl?: string; // local engine only: the record stream for instance histories
 }
@@ -114,34 +117,62 @@ export function buildApi(d: ApiDeps): FastifyInstance {
     const payload = JSON.parse(new URLSearchParams(raw).get("payload") ?? "{}") as {
       type: string;
       user: { id: string; username?: string; name?: string };
+      channel?: { id: string };
+      message?: { ts: string; metadata?: { event_payload?: { kind?: string; subjectId?: string } } };
       actions?: Array<{ action_id: string; value?: string; selected_option?: { value: string } }>;
     };
     const action = payload.actions?.[0];
     if (payload.type !== "block_actions" || !action) return { ok: true };
     const value = JSON.parse(action.value ?? action.selected_option?.value ?? "{}") as { approvalId?: string; intent?: string; decision?: string };
-    const rec = value.approvalId ? d.approvals.get(value.approvalId) : undefined;
-    if (!rec) return { response_type: "ephemeral", text: "This request is no longer open." };
-    if (rec.decision) return { response_type: "ephemeral", text: `Already decided (${rec.decision.outcome}) by ${rec.decision.by}.` };
+    if (!value.approvalId) return { response_type: "ephemeral", text: "This button does not belong to a request." };
+    const meta = payload.message?.metadata?.event_payload ?? {};
     const outcome = action.action_id === "edit" ? "edit" : action.action_id === "reject" ? "reject" : "approve";
     const edits = outcome === "edit" ? (value.intent ? { intent: value.intent } : value.decision ? { decision: value.decision } : null) : null;
     const decision = { outcome, by: `slack:${payload.user.id}`, byName: payload.user.username ?? payload.user.name ?? payload.user.id, edits, at: now().toISOString() };
+    // Correlate, not publish: if no instance is waiting (already decided, expired, double click), nothing happens and
+    // the person is told so.
+    let processInstanceKey: string;
     try {
-      await d.camunda.publishMessage({ name: "approval.decided", correlationKey: rec.approvalId, messageId: `${rec.approvalId}:decision`, timeToLive: 3_600_000, variables: { decision } } as never);
+      const r = await d.camunda.correlateMessage({ name: "approval.decided", correlationKey: value.approvalId, variables: { decision } } as never);
+      processInstanceKey = String(r.processInstanceKey);
     } catch (err) {
-      if (!isAlreadyExists(err)) throw err;
-      return { response_type: "ephemeral", text: "Already recorded." };
+      if (/NOT_FOUND|404|no process instance is waiting/i.test(String((err as Error).message) + JSON.stringify((err as { body?: unknown }).body ?? ""))) {
+        return { response_type: "ephemeral", text: "This request is no longer open: it was already decided or its deadline passed." };
+      }
+      throw err;
     }
-    d.approvals.put({ ...rec, decidedAt: decision.at, decision: { outcome, by: decision.by, edits }, override: outcome !== "approve" });
-    audit("approval.decided", `process/${rec.processInstanceKey}`, "ok", { approvalId: rec.approvalId, kind: rec.kind, outcome, override: outcome !== "approve", by: decision.by });
-    await d.slack.update(rec.channel, rec.ts, `Decision recorded: ${outcome}`, decidedBlocks(`*${rec.kind.replace("_", " ")}* ${rec.subjectId}`, outcome, decision.byName)).catch(() => undefined);
+    audit("approval.decided", `process/${processInstanceKey}`, "ok", { approvalId: value.approvalId, kind: meta.kind, outcome, override: outcome !== "approve", by: decision.by });
+    if (payload.channel?.id && payload.message?.ts) {
+      await d.slack
+        .update(
+          payload.channel.id,
+          payload.message.ts,
+          `Decision recorded: ${outcome}`,
+          decidedBlocks(`*${String(meta.kind ?? "request").replace("_", " ")}* ${meta.subjectId ?? ""}`, outcome, decision.byName),
+        )
+        .catch(() => undefined);
+    }
     return { ok: true };
   });
 
   // ---- scheduled jobs (Cloud Scheduler with an OIDC token in production; a shared token locally) ------------------
-  const scheduler = (auth: string | undefined) => safeEqual(auth ?? "", `Bearer ${d.schedulerToken}`);
+  // Cloud Scheduler sends a Google-signed ID token for the scheduler service account; locally a shared token is used.
+  const oidc = d.schedulerServiceAccount ? new OAuth2Client() : null;
+  const scheduler = async (auth: string | undefined): Promise<boolean> => {
+    const token = (auth ?? "").replace(/^Bearer\s+/i, "");
+    if (d.schedulerToken && safeEqual(token, d.schedulerToken)) return true;
+    if (!oidc || !token) return false;
+    try {
+      const ticket = await oidc.verifyIdToken({ idToken: token, audience: d.schedulerAudience ?? d.publicBaseUrl() });
+      const p = ticket.getPayload();
+      return !!p?.email_verified && p.email === d.schedulerServiceAccount;
+    } catch {
+      return false;
+    }
+  };
 
   app.post("/jobs/renewal-scan", async (req, reply) => {
-    if (!scheduler(req.headers.authorization)) return reply.code(401).send({ error: "unauthorized" });
+    if (!(await scheduler(req.headers.authorization))) return reply.code(401).send({ error: "unauthorized" });
     const cfg = automations().renewal_risk;
     const { renewals } = await d.mcp.call<{ renewals: Array<{ opportunityId: string; accountId: string }> }>("renewals_due", { within_days: cfg.renewal_window_days });
     const week = `${now().getUTCFullYear()}-${Math.ceil((now().getTime() - Date.UTC(now().getUTCFullYear(), 0, 1)) / (7 * 86_400_000))}`;
@@ -165,12 +196,11 @@ export function buildApi(d: ApiDeps): FastifyInstance {
   });
 
   app.post("/jobs/registration-poll", async (req, reply) => {
-    if (!scheduler(req.headers.authorization)) return reply.code(401).send({ error: "unauthorized" });
+    if (!(await scheduler(req.headers.authorization))) return reply.code(401).send({ error: "unauthorized" });
     const cfg = automations().partner_deal_registration;
     const { registrations } = await d.mcp.call<{ registrations: Array<{ id: string }> }>("registrations_pending", {});
     let started = 0;
     for (const r of registrations) {
-      if (d.seen.has(`registration:${r.id}`)) continue;
       try {
         await d.camunda.publishMessage({
           name: cfg.message,
@@ -183,7 +213,6 @@ export function buildApi(d: ApiDeps): FastifyInstance {
       } catch (err) {
         if (!isAlreadyExists(err)) throw err;
       }
-      d.seen.add(`registration:${r.id}`);
     }
     audit("poll.registrations", "partner-deal-registration", "ok", { pending: registrations.length, started });
     return { pending: registrations.length, started };
@@ -240,7 +269,7 @@ export function buildApi(d: ApiDeps): FastifyInstance {
   });
 
   app.get<{ Querystring: { state?: string } }>("/api/approvals", async (req) => {
-    const items = d.approvals.list((r) => (req.query.state === "open" ? !r.decision && !r.closedAt : req.query.state === "decided" ? !!r.decision : true));
+    const items = await d.approvals.list((r) => (req.query.state === "open" ? isOpen(r) : req.query.state === "decided" ? !!r.decision : true));
     return { items: items.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 200) };
   });
 
@@ -271,13 +300,14 @@ export function buildApi(d: ApiDeps): FastifyInstance {
   return app;
 }
 
-/** The console shows process variables, but not the e-mail addresses and messages people sent. */
+/** The console shows process variables, but not the e-mail addresses and messages people sent, or approval tokens. */
 function redact(name: string, v: unknown): unknown {
-  if (name === "submission" && v && typeof v === "object") {
-    const s = v as Json;
-    return { ...s, email: typeof s.email === "string" ? s.email.replace(/^(.).*@/, "$1***@") : s.email, message: typeof s.message === "string" ? `${s.message.slice(0, 80)}…` : s.message };
-  }
   if (name === "approvals") return "[approval tokens]";
-  if (name === "lead" && v && typeof v === "object") return { ...(v as Json), email: "[redacted]" };
-  return v;
+  const walk = (x: unknown, key = ""): unknown => {
+    if (typeof x === "string") return key === "message" ? `${x.slice(0, 80)}…` : x.replace(/([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*@/g, "$1***@");
+    if (Array.isArray(x)) return x.map((y) => walk(y));
+    if (x && typeof x === "object") return Object.fromEntries(Object.entries(x as Json).map(([k, y]) => [k, walk(y, k)]));
+    return x;
+  };
+  return walk(v, name);
 }

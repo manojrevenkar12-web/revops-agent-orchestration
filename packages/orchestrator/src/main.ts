@@ -8,11 +8,12 @@
  */
 import { join } from "node:path";
 import { AuditLog, loadConfig, repoRoot, systemClock } from "@revops/core";
-import { buildConnectors, ChangeSubscriber, FileReplayStore, HttpPubSubTransport } from "@revops/connectors";
+import { BigQueryAuditSink, buildConnectors, ChangeSubscriber, FileReplayStore, HttpPubSubTransport } from "@revops/connectors";
 import { buildApi } from "./api";
+
 import { renewalSignalHandler, startCdc } from "./cdc";
 import { AgentClient, camunda, McpGateway } from "./clients";
-import { FileApprovalStore } from "./slack";
+import { Approvals } from "./approvals";
 import { startStack } from "./stack";
 import { startWorkers } from "./workers";
 
@@ -38,11 +39,13 @@ if (process.argv.includes("--local")) {
   );
 } else {
   const connectors = buildConnectors();
-  const audit = new AuditLog(join(repoRoot(), "var", "audit", "orchestrator.jsonl"));
+  const audit = new AuditLog();
+  const sink = new BigQueryAuditSink(connectors.warehouse, connectors.cfg.bigquery.audit_dataset);
+  audit.addSink(sink);
+  process.on("SIGTERM", () => void sink.flush().finally(() => process.exit(0)));
   const client = camunda(env("CAMUNDA_REST_ADDRESS"));
   const mcp = new McpGateway(env("MCP_URL"), env("MCP_TOKEN"));
-  const approvals = new FileApprovalStore(join(repoRoot(), "var", "approvals.jsonl"));
-  const seen = new Set<string>();
+  const approvals = new Approvals(client);
   const mcpCfg = loadConfig<{ approvals: { secret: string } }>("mcp");
   const api = buildApi({
     camunda: client,
@@ -53,9 +56,9 @@ if (process.argv.includes("--local")) {
     clock: systemClock,
     hubspotSecret: connectors.cfg.hubspot.client_secret,
     slackSigningSecret: connectors.cfg.slack.signing_secret,
-    schedulerToken: env("SCHEDULER_TOKEN"),
+    schedulerToken: process.env.SCHEDULER_TOKEN,
+    schedulerServiceAccount: process.env.SCHEDULER_SERVICE_ACCOUNT,
     publicBaseUrl: () => env("PUBLIC_BASE_URL"),
-    seen,
     consoleDir: join(repoRoot(), "apps", "console", "dist"),
   });
   startWorkers(client, {
@@ -64,7 +67,6 @@ if (process.argv.includes("--local")) {
     slack: connectors.slack,
     channels: connectors.cfg.slack.channels,
     teams: (connectors.cfg.slack as unknown as { teams: Record<string, string> }).teams ?? {},
-    approvals,
     audit,
     approvalSecret: mcpCfg.approvals.secret,
     clock: systemClock,

@@ -121,8 +121,8 @@ async function leadsGolden(s: Stack) {
       completed: procs(s, "inbound-lead-routing").filter((p) => p.state === "COMPLETED").length,
       leadExistsExactlyForSalesRequests: rate(correctLeadSet, s.sb.world.forms.length),
       salesLeadsInTheRightQueue: rate(correctQueue, salesTotal),
-      personDecisions: s.approvals.list((a) => a.kind === "lead" && !!a.decision).length,
-      overrides: s.approvals.list((a) => a.kind === "lead" && !!a.override).length,
+      personDecisions: (await s.approvals.list((a) => a.kind === "lead" && !!a.decision)).length,
+      overrides: (await s.approvals.list((a) => a.kind === "lead" && !!a.override)).length,
       incidents: incidents.length,
     },
     seconds: Math.round((Date.now() - t0) / 1000),
@@ -136,6 +136,7 @@ async function renewalsGolden(s: Stack) {
   await sched(s, "/jobs/renewal-scan");
   await s.settle(300_000);
   const truth = s.sb.world.truth.renewals;
+  const asked = await s.approvals.list((a) => a.kind === "renewal");
   const rows = procs(s, "renewal-risk-save-play").map((p) => {
     const v = p.vars as Json;
     const ver = (v.verification ?? {}) as Json;
@@ -145,7 +146,7 @@ async function renewalsGolden(s: Stack) {
       atRisk: !!truth[opp]?.atRisk,
       p: Number(ver.riskProbability ?? 0),
       grounded: ver.grounded === true,
-      proposed: s.approvals.list((a) => a.kind === "renewal" && a.subjectId === opp).length > 0,
+      proposed: asked.some((a) => a.subjectId === opp),
       unsupported: ((ver.unsupported ?? []) as unknown[]).length,
     };
   });
@@ -164,7 +165,7 @@ async function renewalsGolden(s: Stack) {
     ungroundedProposals: proposed.filter((r) => !r.grounded).length,
     riskEce: ece(rows.map((r) => [r.p, r.atRisk ? 1 : 0])),
     ctasCreated: ctas.length,
-    ctasWithoutApproval: Math.max(0, ctas.length - s.approvals.list((a) => a.kind === "renewal" && a.decision?.outcome === "approve").length),
+    ctasWithoutApproval: Math.max(0, ctas.length - (await s.approvals.list((a) => a.kind === "renewal" && a.decision?.outcome === "approve")).length),
     seconds: Math.round((Date.now() - t0) / 1000),
   };
 }
@@ -268,13 +269,14 @@ async function outage() {
     await post(`${s.sb.url}/_sandbox/hubspot/deliver`, { url: `${s.apiUrl}/webhooks/hubspot`, from: 0, count: 60 });
     await s.settle(300_000);
     const ps = procs(s, "inbound-lead-routing");
+    const requested = new Set((await s.approvals.list()).map((a) => a.processInstanceKey));
     const unclassified = ps.filter((p) => (p.vars.classification as Json | undefined)?.source === "none");
     return {
       submissions: ps.length,
       unclassified: unclassified.length,
       unclassifiedReviewed: unclassified.filter((p) => ((p.vars.reviewReasons ?? []) as unknown[]).length > 0).length,
       incidents: [...s.engine.incidents.values()].filter((i) => i.state === "ACTIVE").length,
-      lost: ps.filter((p) => p.state === "ACTIVE" && !s.approvals.list((a) => a.processInstanceKey === p.key).length).length,
+      lost: ps.filter((p) => p.state === "ACTIVE" && !requested.has(p.key)).length,
     };
   } finally {
     await s.stop();
