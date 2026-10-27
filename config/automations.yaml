@@ -1,0 +1,28 @@
+# The automations this layer runs, what they may do on their own, and what a person must approve.
+# Thresholds are calibrated probabilities (see evals/), not the model's self-reported confidence.
+
+inbound_lead_routing:
+  process_id: inbound-lead-routing
+  owner_team: Marketing Ops / ADR
+  speed_to_lead_sla: PT15M            # ADR review deadline before escalation to the ADR manager
+  auto_route_min_probability: 0.90    # calibrated P(intent label is right) needed to route without a person
+  never_auto: [enterprise]            # segments that always get a person
+  minutes_saved_per_auto_route: 6     # baseline: manual triage time measured by the ADR team
+  cadences:
+    demo_request: { EMEA: cad-emea-demo, NA: cad-na-demo, APAC: cad-apac-demo }
+    pricing: { EMEA: cad-emea-pricing, NA: cad-na-pricing, APAC: cad-apac-pricing }
+
+renewal_risk:
+  process_id: renewal-risk-save-play
+  owner_team: Customer Success
+  approval_deadline: PT24H            # CSM approval before escalation to the CS manager
+  create_cta_min_probability: 0.80
+  renewal_window_days: 120
+  minutes_saved_per_brief: 35
+
+partner_deal_registration:
+  process_id: partner-deal-registration
+  owner_team: Partnerships
+  decision_deadline: P2D              # partner programme promises a decision within two business days
+  auto_approve_max_amount: 50000      # no conflict and below this: approve without a person
+  minutes_saved_per_registration: 20

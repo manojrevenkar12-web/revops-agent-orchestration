@@ -1,0 +1,36 @@
+# Where each system lives and how the client behaves. Secrets come from the environment (Secret Manager on GCP).
+# Locally every base URL points at the GTM sandbox.
+salesforce:
+  login_url: ${SALESFORCE_LOGIN_URL:-http://127.0.0.1:9300}
+  client_id: ${SALESFORCE_CLIENT_ID:-sandbox-client}
+  client_secret: ${SALESFORCE_CLIENT_SECRET:-sandbox-secret}
+  api_version: v62.0
+  soft_reserve_pct: 20      # background automation stops when less than 20 % of the daily API allowance is left
+  hard_reserve_pct: 5       # interactive calls stop at 5 %
+  bulk_threshold: 2000
+gainsight:
+  base_url: ${GAINSIGHT_URL:-http://127.0.0.1:9300}
+  access_key: ${GAINSIGHT_ACCESS_KEY:-gs-sandbox-key}
+salesloft:
+  base_url: ${SALESLOFT_URL:-http://127.0.0.1:9300}
+  api_key: ${SALESLOFT_API_KEY:-sl-sandbox-key}
+clari:
+  base_url: ${CLARI_URL:-http://127.0.0.1:9300}
+  api_key: ${CLARI_API_KEY:-clari-sandbox-key}
+impartner:
+  base_url: ${IMPARTNER_URL:-http://127.0.0.1:9300}
+  key: ${IMPARTNER_KEY:-prm-sandbox-key}
+hubspot:
+  client_secret: ${HUBSPOT_CLIENT_SECRET:-hs-sandbox-secret}
+slack:
+  base_url: ${SLACK_API_URL:-http://127.0.0.1:9300}
+  bot_token: ${SLACK_BOT_TOKEN:-xoxb-sandbox}
+  signing_secret: ${SLACK_SIGNING_SECRET:-slack-sandbox-signing-secret}
+  channels:
+    lead: "#adr-inbound"
+    renewal: "#cs-renewals"
+    deal_registration: "#partner-deal-desk"
+bigquery:
+  project: ${GCP_PROJECT:-revops-sandbox}
+  api_endpoint: ${BIGQUERY_API_ENDPOINT:-http://127.0.0.1:9300}
+  audit_dataset: revops_audit

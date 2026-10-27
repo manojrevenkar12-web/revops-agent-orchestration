@@ -1,0 +1,44 @@
+{
+  "name": "revops-agent-orchestration",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc -b packages/core packages/sandbox packages/connectors packages/mcp-server packages/engine packages/orchestrator && tsc -p tsconfig.tests.json",
+    "test": "vitest run --root .",
+    "lint": "biome check packages",
+    "sandbox": "tsx packages/sandbox/src/main.ts",
+    "orchestrator": "tsx packages/orchestrator/src/main.ts",
+    "mcp": "tsx packages/mcp-server/src/main.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/node": "^22.10.2",
+    "esbuild": "^0.24.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "@camunda8/sdk": "^8.8.18",
+    "@google-cloud/bigquery": "^7.9.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "alasql": "^4.6.2",
+    "bpmn-moddle": "^9.0.1",
+    "dmn-moddle": "^10.0.0",
+    "fastify": "^5.2.0",
+    "feelin": "^3.2.0",
+    "jsforce": "^3.6.2",
+    "pino": "^9.5.0",
+    "undici": "^7.2.0",
+    "yaml": "^2.6.1",
+    "zeebe-bpmn-moddle": "^1.7.0",
+    "zod": "^3.25.76"
+  }
+}

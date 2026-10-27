@@ -1,0 +1,32 @@
+# The GTM MCP server: who may call it, with which scopes, and which tools need an approval.
+# Tokens are stored as SHA-256 hashes; the tokens themselves live in Secret Manager.
+clients:
+  orchestrator:          # the Camunda job workers
+    token_sha256: ${MCP_ORCHESTRATOR_TOKEN_SHA256:-9562394808b7891f279113dd536f21df99a624a40388b3852acfc2f55ecdfee5}
+    scopes: [gtm:read, gtm:pii, gtm:write]
+    requests_per_minute: 1200
+  analyst:               # a person's Claude Desktop or Claude Code: read-only, no personal data
+    token_sha256: ${MCP_ANALYST_TOKEN_SHA256:-e040bbea508eecca5f54f4ca75e81176f8f2767174291106f4eccb15df8dde91}
+    scopes: [gtm:read]
+    requests_per_minute: 60
+
+approvals:
+  secret: ${MCP_APPROVAL_SECRET:-dev-approval-secret-change-me}
+  max_age_seconds: 172800   # an approval is valid for two days
+
+limits:
+  max_rows: 50              # no tool returns more rows than this
+  max_query_chars: 300
+
+tools:
+  account_lookup: { scope: gtm:read }
+  account_360: { scope: gtm:read }
+  open_opportunities: { scope: gtm:read }
+  partner_registrations: { scope: gtm:read }
+  playbook_search: { scope: gtm:read }
+  crm_upsert_lead: { scope: gtm:write, approval: required }
+  crm_create_task: { scope: gtm:write, approval: required }
+  cs_create_cta: { scope: gtm:write, approval: required }
+  seq_enroll: { scope: gtm:write, approval: required }
+  prm_decide_registration: { scope: gtm:write, approval: required }
+  crm_link_partner: { scope: gtm:write, approval: required }
