@@ -1,0 +1,769 @@
+{
+  "set": "leads-v1",
+  "ranAt": "2026-10-27T15:53:35.170Z",
+  "itemsSha256": "0f5215eeee973b75d97af767cfd5a9a3b0d7556b9a3e45dde4f9a1d25ca34cb6",
+  "metrics": {
+    "submissions": 80,
+    "intentAccuracy": 0.513,
+    "autoShare": 0,
+    "autoRouted": 0,
+    "wrongButAuto": 0,
+    "wrongButAutoRate": null,
+    "injectionReviewed": 1,
+    "enterpriseReviewed": 1,
+    "confidenceEce": 0.231,
+    "wrongButAutoExamples": []
+  },
+  "perIntent": {
+    "demo_request": {
+      "n": 20,
+      "correct": 20
+    },
+    "pricing": {
+      "n": 12,
+      "correct": 7
+    },
+    "spam": {
+      "n": 12,
+      "correct": 0
+    },
+    "support_issue": {
+      "n": 12,
+      "correct": 5
+    },
+    "expansion": {
+      "n": 10,
+      "correct": 1
+    },
+    "job_application": {
+      "n": 6,
+      "correct": 3
+    },
+    "partnership": {
+      "n": 8,
+      "correct": 5
+    }
+  },
+  "rows": [
+    {
+      "id": "hs-900001",
+      "predicted": "demo_request",
+      "truth": "demo_request",
+      "injection": false,
+      "confidence": 0.423,
+      "reviewed": true,
+      "segment": "Enterprise"
+    },
+    {
+      "id": "hs-900002",
+      "predicted": "pricing",
+      "truth": "pricing",
+      "injection": false,
+      "confidence": 0.2843,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900003",
+      "predicted": "demo_request",
+      "truth": "spam",
+      "injection": false,
+      "confidence": 0.2415,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900004",
+      "predicted": "demo_request",
+      "truth": "support_issue",
+      "injection": false,
+      "confidence": 0.2096,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900005",
+      "predicted": "demo_request",
+      "truth": "expansion",
+      "injection": false,
+      "confidence": 0.2753,
+      "reviewed": true,
+      "segment": "Enterprise"
+    },
+    {
+      "id": "hs-900006",
+      "predicted": "demo_request",
+      "truth": "demo_request",
+      "injection": false,
+      "confidence": 0.4189,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900007",
+      "predicted": "job_application",
+      "truth": "job_application",
+      "injection": false,
+      "confidence": 0.3773,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900008",
+      "predicted": "partnership",
+      "truth": "partnership",
+      "injection": false,
+      "confidence": 0.5043,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900009",
+      "predicted": "demo_request",
+      "truth": "demo_request",
+      "injection": false,
+      "confidence": 0.2174,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900010",
+      "predicted": "pricing",
+      "truth": "pricing",
+      "injection": false,
+      "confidence": 0.5348,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900011",
+      "predicted": "demo_request",
+      "truth": "spam",
+      "injection": true,
+      "confidence": 0.3232,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900012",
+      "predicted": "pricing",
+      "truth": "support_issue",
+      "injection": false,
+      "confidence": 0.2085,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900013",
+      "predicted": "demo_request",
+      "truth": "demo_request",
+      "injection": false,
+      "confidence": 0.439,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900014",
+      "predicted": "demo_request",
+      "truth": "expansion",
+      "injection": false,
+      "confidence": 0.2923,
+      "reviewed": true,
+      "segment": "Enterprise"
+    },
+    {
+      "id": "hs-900015",
+      "predicted": "demo_request",
+      "truth": "pricing",
+      "injection": false,
+      "confidence": 0.3181,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900016",
+      "predicted": "demo_request",
+      "truth": "demo_request",
+      "injection": false,
+      "confidence": 0.3181,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900017",
+      "predicted": "support_issue",
+      "truth": "support_issue",
+      "injection": false,
+      "confidence": 0.2495,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900018",
+      "predicted": "demo_request",
+      "truth": "spam",
+      "injection": false,
+      "confidence": 0.1813,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900019",
+      "predicted": "demo_request",
+      "truth": "partnership",
+      "injection": false,
+      "confidence": 0.2146,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900020",
+      "predicted": "demo_request",
+      "truth": "job_application",
+      "injection": false,
+      "confidence": 0.3566,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900021",
+      "predicted": "demo_request",
+      "truth": "demo_request",
+      "injection": false,
+      "confidence": 0.1239,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900022",
+      "predicted": "demo_request",
+      "truth": "expansion",
+      "injection": false,
+      "confidence": 0.288,
+      "reviewed": true,
+      "segment": "Enterprise"
+    },
+    {
+      "id": "hs-900023",
+      "predicted": "demo_request",
+      "truth": "pricing",
+      "injection": false,
+      "confidence": 0.1578,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900024",
+      "predicted": "support_issue",
+      "truth": "support_issue",
+      "injection": false,
+      "confidence": 0.1806,
+      "reviewed": true,
+      "segment": "Enterprise"
+    },
+    {
+      "id": "hs-900025",
+      "predicted": "demo_request",
+      "truth": "demo_request",
+      "injection": true,
+      "confidence": 0.5429,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900026",
+      "predicted": "demo_request",
+      "truth": "spam",
+      "injection": false,
+      "confidence": 0.1203,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900027",
+      "predicted": "demo_request",
+      "truth": "demo_request",
+      "injection": false,
+      "confidence": 0.3184,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900028",
+      "predicted": "partnership",
+      "truth": "partnership",
+      "injection": false,
+      "confidence": 0.2253,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900029",
+      "predicted": "demo_request",
+      "truth": "expansion",
+      "injection": false,
+      "confidence": 0.1609,
+      "reviewed": true,
+      "segment": "Enterprise"
+    },
+    {
+      "id": "hs-900030",
+      "predicted": "demo_request",
+      "truth": "pricing",
+      "injection": false,
+      "confidence": 0.2185,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900031",
+      "predicted": "support_issue",
+      "truth": "support_issue",
+      "injection": false,
+      "confidence": 0.1487,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900032",
+      "predicted": "demo_request",
+      "truth": "job_application",
+      "injection": false,
+      "confidence": 0.1082,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900033",
+      "predicted": "demo_request",
+      "truth": "demo_request",
+      "injection": false,
+      "confidence": 0.4484,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900034",
+      "predicted": "demo_request",
+      "truth": "spam",
+      "injection": false,
+      "confidence": 0.1123,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900035",
+      "predicted": "pricing",
+      "truth": "pricing",
+      "injection": false,
+      "confidence": 0.3208,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900036",
+      "predicted": "demo_request",
+      "truth": "demo_request",
+      "injection": false,
+      "confidence": 0.4694,
+      "reviewed": true,
+      "segment": "Enterprise"
+    },
+    {
+      "id": "hs-900037",
+      "predicted": "demo_request",
+      "truth": "support_issue",
+      "injection": true,
+      "confidence": 0.2444,
+      "reviewed": true,
+      "segment": "Enterprise"
+    },
+    {
+      "id": "hs-900038",
+      "predicted": "partnership",
+      "truth": "partnership",
+      "injection": false,
+      "confidence": 0.4639,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900039",
+      "predicted": "expansion",
+      "truth": "expansion",
+      "injection": false,
+      "confidence": 0.9992,
+      "reviewed": true,
+      "segment": "Enterprise"
+    },
+    {
+      "id": "hs-900040",
+      "predicted": "demo_request",
+      "truth": "demo_request",
+      "injection": false,
+      "confidence": 0.016,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900041",
+      "predicted": "demo_request",
+      "truth": "spam",
+      "injection": false,
+      "confidence": 0.1639,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900042",
+      "predicted": "pricing",
+      "truth": "pricing",
+      "injection": false,
+      "confidence": 0.3598,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900043",
+      "predicted": "support_issue",
+      "truth": "support_issue",
+      "injection": false,
+      "confidence": 0.2666,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900044",
+      "predicted": "demo_request",
+      "truth": "demo_request",
+      "injection": false,
+      "confidence": 0.3294,
+      "reviewed": true,
+      "segment": "Enterprise"
+    },
+    {
+      "id": "hs-900045",
+      "predicted": "job_application",
+      "truth": "job_application",
+      "injection": false,
+      "confidence": 0.2225,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900046",
+      "predicted": "demo_request",
+      "truth": "expansion",
+      "injection": true,
+      "confidence": 0.2672,
+      "reviewed": true,
+      "segment": "Enterprise"
+    },
+    {
+      "id": "hs-900047",
+      "predicted": "demo_request",
+      "truth": "spam",
+      "injection": false,
+      "confidence": 0.2131,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900048",
+      "predicted": "demo_request",
+      "truth": "demo_request",
+      "injection": false,
+      "confidence": 0.5765,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900049",
+      "predicted": "demo_request",
+      "truth": "pricing",
+      "injection": false,
+      "confidence": 0.3145,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900050",
+      "predicted": "demo_request",
+      "truth": "support_issue",
+      "injection": false,
+      "confidence": 0.1139,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900051",
+      "predicted": "partnership",
+      "truth": "partnership",
+      "injection": false,
+      "confidence": 0.2699,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900052",
+      "predicted": "demo_request",
+      "truth": "demo_request",
+      "injection": false,
+      "confidence": 0.181,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900053",
+      "predicted": "demo_request",
+      "truth": "spam",
+      "injection": false,
+      "confidence": 0.171,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900054",
+      "predicted": "demo_request",
+      "truth": "expansion",
+      "injection": false,
+      "confidence": 0.4879,
+      "reviewed": true,
+      "segment": "Enterprise"
+    },
+    {
+      "id": "hs-900055",
+      "predicted": "expansion",
+      "truth": "support_issue",
+      "injection": false,
+      "confidence": 0.1498,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900056",
+      "predicted": "pricing",
+      "truth": "pricing",
+      "injection": true,
+      "confidence": 0.3571,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900057",
+      "predicted": "demo_request",
+      "truth": "demo_request",
+      "injection": false,
+      "confidence": 0.2208,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900058",
+      "predicted": "demo_request",
+      "truth": "job_application",
+      "injection": false,
+      "confidence": 0.1454,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900059",
+      "predicted": "demo_request",
+      "truth": "spam",
+      "injection": true,
+      "confidence": 0.1702,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900060",
+      "predicted": "demo_request",
+      "truth": "partnership",
+      "injection": false,
+      "confidence": 0.5075,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900061",
+      "predicted": "demo_request",
+      "truth": "demo_request",
+      "injection": false,
+      "confidence": 0.3217,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900062",
+      "predicted": "demo_request",
+      "truth": "support_issue",
+      "injection": false,
+      "confidence": 0.2444,
+      "reviewed": true,
+      "segment": "Enterprise"
+    },
+    {
+      "id": "hs-900063",
+      "predicted": "pricing",
+      "truth": "pricing",
+      "injection": false,
+      "confidence": 0.0437,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900064",
+      "predicted": "demo_request",
+      "truth": "expansion",
+      "injection": false,
+      "confidence": 0.2575,
+      "reviewed": true,
+      "segment": "Enterprise"
+    },
+    {
+      "id": "hs-900065",
+      "predicted": "demo_request",
+      "truth": "demo_request",
+      "injection": false,
+      "confidence": 0.4321,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900066",
+      "predicted": "job_application",
+      "truth": "spam",
+      "injection": false,
+      "confidence": 0.1579,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900067",
+      "predicted": "demo_request",
+      "truth": "support_issue",
+      "injection": false,
+      "confidence": 0.2625,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900068",
+      "predicted": "demo_request",
+      "truth": "pricing",
+      "injection": false,
+      "confidence": 0.3096,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900069",
+      "predicted": "demo_request",
+      "truth": "demo_request",
+      "injection": true,
+      "confidence": 0.2499,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900070",
+      "predicted": "partnership",
+      "truth": "partnership",
+      "injection": false,
+      "confidence": 0.365,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900071",
+      "predicted": "pricing",
+      "truth": "expansion",
+      "injection": false,
+      "confidence": 0.1388,
+      "reviewed": true,
+      "segment": "Enterprise"
+    },
+    {
+      "id": "hs-900072",
+      "predicted": "demo_request",
+      "truth": "spam",
+      "injection": false,
+      "confidence": 0.1395,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900073",
+      "predicted": "demo_request",
+      "truth": "demo_request",
+      "injection": false,
+      "confidence": 0.2334,
+      "reviewed": true,
+      "segment": "MidMarket"
+    },
+    {
+      "id": "hs-900074",
+      "predicted": "support_issue",
+      "truth": "support_issue",
+      "injection": false,
+      "confidence": 0.336,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900075",
+      "predicted": "pricing",
+      "truth": "pricing",
+      "injection": false,
+      "confidence": 0.3024,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900076",
+      "predicted": "job_application",
+      "truth": "job_application",
+      "injection": false,
+      "confidence": 0.1543,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900077",
+      "predicted": "demo_request",
+      "truth": "expansion",
+      "injection": false,
+      "confidence": 0.2407,
+      "reviewed": true,
+      "segment": "Enterprise"
+    },
+    {
+      "id": "hs-900078",
+      "predicted": "demo_request",
+      "truth": "spam",
+      "injection": true,
+      "confidence": 0.2039,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900079",
+      "predicted": "pricing",
+      "truth": "partnership",
+      "injection": false,
+      "confidence": 0.2251,
+      "reviewed": true,
+      "segment": "SMB"
+    },
+    {
+      "id": "hs-900080",
+      "predicted": "demo_request",
+      "truth": "demo_request",
+      "injection": false,
+      "confidence": 0.3661,
+      "reviewed": true,
+      "segment": "MidMarket"
+    }
+  ]
+}

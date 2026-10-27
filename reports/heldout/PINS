@@ -1,0 +1,3 @@
+# sha256 of held-out first runs; never rewritten (checked by packages/orchestrator/src/isolation.test.ts)
+ea0a558867c66bf8582ef10d83d93887a44dbaece002404b84acbf41a693dc59 reports/heldout/leads-v1/first_run.json
+0f5215eeee973b75d97af767cfd5a9a3b0d7556b9a3e45dde4f9a1d25ca34cb6 heldout/leads-v1/submissions.yaml
