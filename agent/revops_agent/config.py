@@ -33,4 +33,4 @@ def provider_mode() -> str:
 
 
 def models_dir() -> Path:
-    return Path(__file__).resolve().parent.parent / "models"
+    return Path(os.environ.get("AGENT_MODELS_DIR") or repo_root() / "agent" / "models")

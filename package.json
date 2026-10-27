@@ -18,7 +18,7 @@
     "mcp": "tsx packages/mcp-server/src/main.ts",
     "eval": "tsx evals/run.ts",
     "gate": "tsx evals/gate.ts",
-    "dev": "tsx packages/orchestrator/src/main.ts --local",
+    "dev": "tsx packages/orchestrator/src/local.ts",
     "history": "tsx scripts/export-history.ts",
     "heldout": "tsx evals/run.ts --heldout",
     "console:test": "npm -w @revops/console test",

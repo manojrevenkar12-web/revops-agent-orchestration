@@ -1,0 +1,143 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typescript:
+    name: TypeScript (typecheck, lint, unit and flow tests)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install
+        run: |
+          npm ci --no-audit --no-fund
+          python -m venv .venv
+          .venv/bin/pip install -q -e "agent[dev]"
+      - run: npm run typecheck
+      - run: npm run lint
+      - name: Unit, engine, MCP and end-to-end flow tests
+        run: npx vitest run
+
+  python:
+    name: Agent service (ruff, pytest)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -q -e ".[dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest -q
+
+  console:
+    name: Console (component tests, build, Playwright)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install
+        run: |
+          npm ci --no-audit --no-fund
+          python -m venv .venv
+          .venv/bin/pip install -q -e agent
+          npx playwright install --with-deps chromium
+      - run: npm -w @revops/console test
+      - run: npm -w @revops/console run build
+      - run: npm -w @revops/console run e2e
+
+  evaluation:
+    name: Evaluation and release gate
+    runs-on: ubuntu-24.04
+    needs: [typescript, python]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install
+        run: |
+          npm ci --no-audit --no-fund
+          python -m venv .venv
+          .venv/bin/pip install -q -e agent
+      - name: Golden, fault and outage runs
+        run: npx tsx evals/run.ts
+      - name: Release gate (config/release.yaml)
+        run: npx tsx evals/gate.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-report
+          path: reports/eval/report.json
+
+  terraform:
+    name: Terraform (fmt, validate)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: deploy/terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - name: Format
+        run: |
+          if ! terraform fmt -check -recursive; then
+            terraform fmt -recursive -diff | sed 's/^/::error title=terraform fmt::/' | head -40
+            exit 1
+          fi
+      - run: terraform init -backend=false -input=false
+      - name: Validate
+        run: |
+          terraform validate -json > validate.json || true
+          jq -r '.diagnostics[]? | "::error title=terraform validate::\(.summary) \(.detail // "") \(.range.filename // ""):\(.range.start.line // "")"' validate.json
+          jq -e '.valid' validate.json
+
+  images:
+    name: Container images
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        service: [orchestrator, mcp-server, agent]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          if [ "${{ matrix.service }}" = "agent" ]; then
+            docker build -f deploy/docker/agent.Dockerfile -t revops/agent:${{ github.sha }} .
+          else
+            docker build -f deploy/docker/node.Dockerfile --build-arg SERVICE=${{ matrix.service }} -t revops/${{ matrix.service }}:${{ github.sha }} .
+          fi

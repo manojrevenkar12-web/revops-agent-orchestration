@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+.venv
+**/__pycache__
+.git
+var
+apps/console/test-results
+reports
+agent/data
+heldout

@@ -7,6 +7,21 @@ import { type CamundaClient, createCamundaClient } from "@camunda8/orchestration
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { GoogleAuth } from "google-auth-library";
+
+/**
+ * On Cloud Run, the MCP server and the agent service require an IAM identity token. It goes in
+ * X-Serverless-Authorization, so the Authorization header stays free for the services' own tokens.
+ * Locally (no audience configured) nothing is added.
+ */
+const auth = new GoogleAuth();
+export async function serverlessAuth(audience: string | undefined): Promise<Record<string, string>> {
+  if (!audience) return {};
+  const client = await auth.getIdTokenClient(audience);
+  const headers = await client.getRequestHeaders();
+  const token = (headers as Record<string, string>).Authorization ?? (headers as Record<string, string>).authorization;
+  return token ? { "x-serverless-authorization": token } : {};
+}
 
 /**
  * Camunda: locally the engine in this repository (no auth); in production a Camunda 8.8 cluster with OAuth client
@@ -57,13 +72,21 @@ export class McpGateway {
   constructor(
     private readonly url: string,
     private readonly token: string,
+    private readonly audience?: string,
   ) {}
 
   private async connect(): Promise<Client> {
     if (this.client) return this.client;
     this.connecting ??= (async () => {
       const c = new Client({ name: "revops-orchestrator", version: "0.1.0" });
-      await c.connect(new StreamableHTTPClientTransport(new URL(this.url), { requestInit: { headers: { authorization: `Bearer ${this.token}` } } }));
+      // ID tokens expire after an hour; the fetch wrapper asks for a fresh header on every request (cached by the library).
+      const audience = this.audience;
+      const fetchWithIam: typeof fetch = async (input, init) => {
+        const headers = new Headers(init?.headers);
+        for (const [k, v] of Object.entries(await serverlessAuth(audience))) headers.set(k, v);
+        return fetch(input, { ...init, headers });
+      };
+      await c.connect(new StreamableHTTPClientTransport(new URL(this.url), { requestInit: { headers: { authorization: `Bearer ${this.token}` } }, fetch: fetchWithIam }));
       this.client = c;
       return c;
     })();
@@ -116,6 +139,7 @@ export class AgentClient {
   constructor(
     private readonly baseUrl: string,
     private readonly token: string,
+    private readonly audience?: string,
   ) {}
 
   async post<T>(path: string, body: unknown): Promise<T> {

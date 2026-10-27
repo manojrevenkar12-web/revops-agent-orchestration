@@ -1,0 +1,14 @@
+project_id           = "revops-prod"
+image_tag            = "set-by-ci"
+camunda_rest_address = "https://bru-2.zeebe.camunda.io/<cluster-id>/v2"
+camunda_client_id    = "<client id from the Camunda console>"
+public_base_url      = "https://revops-orchestrator-<hash>-ey.a.run.app"
+console_viewers      = ["group:revops@example.com"]
+gtm_endpoints = {
+  salesforce_login_url = "https://login.salesforce.com"
+  salesforce_client_id = "<connected app client id>"
+  gainsight_url        = "https://<tenant>.gainsightcloud.com"
+  salesloft_url        = "https://api.salesloft.com"
+  clari_url            = "https://api.clari.com"
+  impartner_url        = "https://prod.impartner.live"
+}

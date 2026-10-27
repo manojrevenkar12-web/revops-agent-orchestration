@@ -1,0 +1,46 @@
+name: deploy
+
+# Deploys main to Cloud Run after CI passed. Runs only when the repository has the GCP variables set
+# (GCP_PROJECT, GCP_REGION, GCP_WIF_PROVIDER, GCP_DEPLOYER), so forks and this showcase do not try to deploy.
+on:
+  workflow_run:
+    workflows: [ci]
+    branches: [main]
+    types: [completed]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && vars.GCP_PROJECT != '' }}
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        service: [orchestrator, mcp-server, agent]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Build and push
+        env:
+          IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT }}/revops/${{ matrix.service == 'mcp-server' && 'mcp-server' || matrix.service }}:${{ github.event.workflow_run.head_sha }}
+        run: |
+          gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev --quiet
+          if [ "${{ matrix.service }}" = "agent" ]; then
+            docker build -f deploy/docker/agent.Dockerfile -t "$IMAGE" .
+          else
+            docker build -f deploy/docker/node.Dockerfile --build-arg SERVICE=${{ matrix.service }} -t "$IMAGE" .
+          fi
+          docker push "$IMAGE"
+      - name: Deploy the new revision
+        run: |
+          name=revops-${{ matrix.service == 'mcp-server' && 'mcp' || matrix.service }}
+          gcloud run deploy "$name" --region ${{ vars.GCP_REGION }} \
+            --image ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT }}/revops/${{ matrix.service }}:${{ github.event.workflow_run.head_sha }} --quiet
