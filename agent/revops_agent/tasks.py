@@ -182,6 +182,11 @@ class AgentService:
         state: dict[str, Any] | None,
     ) -> dict[str, Any]:
         state = dict(state or {})
+        # Tool calls run in parallel; Camunda asks again as each one finishes. Answer only when all have.
+        have = {r.get("id") for r in results}
+        waiting_for = [i for i in state.get("awaiting", []) if i not in have]
+        if waiting_for:
+            return {"action": "wait", "state": state, "stats": {"modelCalls": int(state.get("modelCalls", 0)), **state.get("usage", {})}}
         messages: list[dict[str, Any]] = state.get("messages") or [
             {"role": "user", "content": f"<input>{json.dumps({'context': context})}</input>\nInvestigate this renewal."}
         ]
@@ -316,6 +321,7 @@ class AgentService:
                 if model_calls < limit
                 else {"action": "give_up", "reason": "no valid tool call", "state": new_state, "stats": out_stats}
             )
+        new_state["awaiting"] = [c["id"] for c in calls]
         return {"action": "call_tools", "toolCalls": calls, "state": new_state, "stats": out_stats}
 
     # ---- grounding check and risk score (no model) ----------------------------------------------------------------

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-27T15:51:15.002Z",
+  "generatedAt": "2026-10-27T16:01:40.020Z",
   "golden": {
     "leads": {
       "beforePeople": {
@@ -22,7 +22,7 @@
         "overrides": 0,
         "incidents": 0
       },
-      "seconds": 14
+      "seconds": 15
     },
     "renewals": {
       "investigated": 24,
@@ -50,7 +50,65 @@
     "salesforceApiShareUsed": 0.014,
     "auditIntact": true,
     "overview": {
-      "generatedAt": "2026-10-26T09:11:00.000Z",
+      "generatedAt": "2026-10-26T09:13:00.000Z",
+      "lanes": [
+        {
+          "id": "inbound-lead-routing",
+          "title": "Inbound leads",
+          "total": 320,
+          "segments": [
+            {
+              "kind": "policy",
+              "label": "Routed by policy",
+              "count": 175
+            },
+            {
+              "kind": "person",
+              "label": "Decided by an ADR",
+              "count": 62
+            },
+            {
+              "kind": "none",
+              "label": "Closed as spam or forwarded",
+              "count": 83
+            }
+          ]
+        },
+        {
+          "id": "renewal-risk-save-play",
+          "title": "Renewals at risk",
+          "total": 24,
+          "segments": [
+            {
+              "kind": "person",
+              "label": "Decided by a CSM",
+              "count": 7
+            },
+            {
+              "kind": "none",
+              "label": "No save play needed",
+              "count": 17
+            }
+          ]
+        },
+        {
+          "id": "partner-deal-registration",
+          "title": "Deal registrations",
+          "total": 50,
+          "segments": [
+            {
+              "kind": "policy",
+              "label": "Approved by policy",
+              "count": 23
+            },
+            {
+              "kind": "person",
+              "label": "Decided by the deal desk",
+              "count": 27
+            }
+          ]
+        }
+      ],
       "processes": [
         {
           "id": "inbound-lead-routing",
@@ -102,11 +160,11 @@
       },
       "hoursSaved": 41.4,
       "models": {
-        "calls": 451,
-        "inputTokens": 250635,
-        "outputTokens": 35533,
-        "costUsd": null,
-        "costKnown": false,
+        "calls": 396,
+        "inputTokens": 121052,
+        "outputTokens": 25046,
+        "costUsd": 0,
+        "costKnown": true,
         "repairs": 0,
         "latencyMs": {
           "p50": 0,
@@ -120,14 +178,14 @@
   "faults": {
     "leadIncidents": 0,
     "renewals": {
-      "ungrounded": 6,
+      "ungrounded": 8,
       "ungroundedProposals": 0,
-      "proposals": 6,
+      "proposals": 3,
       "proposalPrecision": 1
     },
     "registrations": {
       "leaks": 0,
-      "withheldDrafts": 10,
+      "withheldDrafts": 9,
       "incidents": 0
     }
   },
@@ -138,5 +196,5 @@
     "incidents": 0,
     "lost": 0
   },
-  "seconds": 31
+  "seconds": 32
 }

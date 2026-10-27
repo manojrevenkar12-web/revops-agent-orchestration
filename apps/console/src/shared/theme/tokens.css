@@ -1,0 +1,115 @@
+/*
+ * Design tokens. Colour carries one meaning everywhere in the console:
+ *   policy   - the automation decided within its policy
+ *   person   - a person decided (in Slack)
+ *   waiting  - waiting for a person or a deadline
+ *   incident - stopped, needs an engineer
+ * Text and meaning colours meet WCAG AA on their backgrounds in both themes.
+ */
+:root {
+  --font: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --paper: #eef1f0;
+  --surface: #ffffff;
+  --surface-sunk: #e4e8e6;
+  --line: #cfd6d3;
+  --ink: #17212b;
+  --ink-2: #48535f;
+  --ink-3: #66717d;
+
+  --policy: #0b6e5b;
+  --policy-tint: #d5ece6;
+  --person: #4540ad;
+  --person-tint: #e1e0f6;
+  --waiting: #8a5a08;
+  --waiting-tint: #f6e7c8;
+  --incident: #a8361a;
+  --incident-tint: #f7ddd5;
+  --none: #9aa5ae;
+  --none-tint: #e7eaec;
+  --focus: #1f5fe0;
+
+  --size-1: 0.75rem;
+  --size-2: 0.875rem;
+  --size-3: 1rem;
+  --size-4: 1.25rem;
+  --size-5: 1.75rem;
+  --size-6: 2.5rem;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+
+  --radius-s: 4px;
+  --radius-m: 8px;
+  --nav-width: 232px;
+  --content-max: 1180px;
+  --measure: 68ch;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #12181e;
+    --surface: #1a222a;
+    --surface-sunk: #0e1418;
+    --line: #2c3742;
+    --ink: #e8edf1;
+    --ink-2: #b4bec8;
+    --ink-3: #8d99a5;
+    --policy: #4cc5a8;
+    --policy-tint: #133a32;
+    --person: #a7a3f5;
+    --person-tint: #2a2856;
+    --waiting: #e6b45a;
+    --waiting-tint: #3d3018;
+    --incident: #f08c6e;
+    --incident-tint: #45231a;
+    --none: #6c7884;
+    --none-tint: #24303a;
+    --focus: #7aa7ff;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-s);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

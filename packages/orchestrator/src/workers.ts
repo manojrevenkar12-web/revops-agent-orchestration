@@ -336,6 +336,7 @@ export function handlers(d: WorkerDeps): Record<string, (job: JobView) => Promis
             state: prior.state ?? null,
           },
         );
+        if (r.action === "wait") return complete({}, { type: "adHocSubProcess", activateElements: [], isCompletionConditionFulfilled: false, isCancelRemainingInstances: false });
         audit(job, "agent.turn", r.action === "give_up" ? "error" : "ok", { action: r.action, tools: r.toolCalls.map((t) => t.elementId), stats: r.stats });
         if (r.action === "give_up") return { kind: "error", code: "NO_BRIEF", message: r.reason ?? "the agent gave up" };
         if (r.action === "finish")

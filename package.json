@@ -12,7 +12,7 @@
   "scripts": {
     "typecheck": "tsc -b packages/core packages/sandbox packages/connectors packages/mcp-server packages/engine packages/orchestrator && tsc -p tsconfig.tests.json",
     "test": "vitest run --root .",
-    "lint": "biome check packages scripts evals",
+    "lint": "biome check packages scripts evals apps/console/src apps/console/e2e",
     "sandbox": "tsx packages/sandbox/src/main.ts",
     "orchestrator": "tsx packages/orchestrator/src/main.ts",
     "mcp": "tsx packages/mcp-server/src/main.ts",
@@ -20,7 +20,9 @@
     "gate": "tsx evals/gate.ts",
     "dev": "tsx packages/orchestrator/src/main.ts --local",
     "history": "tsx scripts/export-history.ts",
-    "heldout": "tsx evals/run.ts --heldout"
+    "heldout": "tsx evals/run.ts --heldout",
+    "console:test": "npm -w @revops/console test",
+    "console:e2e": "npm -w @revops/console run e2e"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

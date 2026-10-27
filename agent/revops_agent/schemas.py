@@ -93,7 +93,7 @@ class ToolCall(BaseModel):
 
 
 class RenewalNextResponse(BaseModel):
-    action: Literal["call_tools", "finish", "give_up"]
+    action: Literal["call_tools", "finish", "give_up", "wait"]
     toolCalls: list[ToolCall] = Field(default_factory=list)
     brief: dict[str, Any] | None = None
     reason: str | None = None

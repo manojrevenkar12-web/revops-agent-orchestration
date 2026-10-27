@@ -15,8 +15,16 @@ const quantile = (xs: number[], q: number): number | null => {
   return s[Math.min(s.length - 1, Math.floor(q * s.length))] as number;
 };
 
+export interface Lane {
+  id: string;
+  title: string;
+  total: number;
+  segments: Array<{ kind: "policy" | "person" | "none" | "waiting" | "incident"; label: string; count: number }>;
+}
+
 export interface Overview {
   generatedAt: string;
+  lanes: Lane[];
   processes: Array<{ id: string; active: number; completed: number; incidents: number }>;
   leads: { received: number; autoRouted: number; personDecided: number; overrides: number; overrideRate: number | null; speedToLeadMinutes: { p50: number | null; p90: number | null } };
   renewals: { investigated: number; grounded: number; ungrounded: number; proposed: number; approved: number; declined: number };
@@ -93,9 +101,36 @@ export async function computeMetrics(d: { audit: AuditLog; approvals: ApprovalSt
       incidents += inc;
     }
   }
+  const open = (kind: string) => d.approvals.list((r) => r.kind === kind && !r.decision && !r.closedAt).length;
+  const personDone = (kind: string) => decided.filter((r) => r.kind === kind).length;
+  const incidentsOf = (id: string) => processes.find((p) => p.id === id)?.incidents ?? 0;
+  const lane = (id: string, title: string, total: number, segs: Lane["segments"], rest: string): Lane => {
+    const known = segs.reduce((n, x) => n + x.count, 0);
+    return { id, title, total, segments: [...segs, { kind: "none" as const, label: rest, count: Math.max(0, total - known) }].filter((x) => x.count > 0) };
+  };
+  const lanes: Lane[] = [
+    lane(cfg.inbound_lead_routing.process_id, "Inbound leads", received.length, [
+      { kind: "policy", label: "Routed by policy", count: auto.length },
+      { kind: "person", label: "Decided by an ADR", count: personDone("lead") },
+      { kind: "waiting", label: "Waiting for an ADR", count: open("lead") },
+      { kind: "incident", label: "Stopped by an incident", count: incidentsOf(cfg.inbound_lead_routing.process_id) },
+    ], "Closed as spam or forwarded"),
+    lane(cfg.renewal_risk.process_id, "Renewals at risk", verified.length, [
+      { kind: "person", label: "Decided by a CSM", count: personDone("renewal") },
+      { kind: "waiting", label: "Waiting for a CSM", count: open("renewal") },
+      { kind: "incident", label: "Stopped by an incident", count: incidentsOf(cfg.renewal_risk.process_id) },
+    ], "No save play needed"),
+    lane(cfg.partner_deal_registration.process_id, "Deal registrations", regIssued.length + open("deal_registration") + incidentsOf(cfg.partner_deal_registration.process_id) + decided.filter((r) => r.kind === "deal_registration" && r.decision?.outcome === "reject").length, [
+      { kind: "policy", label: "Approved by policy", count: regIssued.filter((e) => String(e.detail.approvedBy).startsWith("policy:")).length },
+      { kind: "person", label: "Decided by the deal desk", count: personDone("deal_registration") },
+      { kind: "waiting", label: "Waiting for the deal desk", count: open("deal_registration") },
+      { kind: "incident", label: "Stopped by an incident", count: incidentsOf(cfg.partner_deal_registration.process_id) },
+    ], "Handled outside the process"),
+  ];
   const decisionMinutes = decided.map((r) => (Date.parse(r.decidedAt as string) - Date.parse(r.createdAt)) / 60_000);
   return {
     generatedAt: d.now.toISOString(),
+    lanes,
     processes,
     leads: {
       received: received.length,
