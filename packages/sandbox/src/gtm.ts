@@ -51,17 +51,18 @@ export class GtmSystems {
   salesloftMinute = { window: 0, used: 0, limit: 600 };
   readonly bqJobs = new Map<string, { sql: string; params: never[] }>();
   seq = 0;
+  readonly db: InstanceType<typeof alasql.Database>;
 
   constructor(
     readonly world: World,
     readonly clock: Clock,
   ) {
-    // the product-usage warehouse
-    alasql("CREATE DATABASE IF NOT EXISTS gtm; USE gtm;");
-    alasql("DROP TABLE IF EXISTS product_product_usage_weekly; CREATE TABLE product_product_usage_weekly");
-    alasql("DROP TABLE IF EXISTS support_tickets; CREATE TABLE support_tickets");
-    alasql.tables.product_product_usage_weekly!.data = world.usage.map((u) => ({ ...u }));
-    alasql.tables.support_tickets!.data = world.tickets.map((t) => ({ ...t }));
+    // the product-usage warehouse: one in-memory database per sandbox, so two sandboxes never share data
+    this.db = new alasql.Database();
+    this.db.exec("CREATE TABLE product_product_usage_weekly; CREATE TABLE support_tickets");
+    const tables = this.db.tables as Record<string, { data: unknown[] }>;
+    (tables.product_product_usage_weekly as { data: unknown[] }).data = world.usage.map((u) => ({ ...u }));
+    (tables.support_tickets as { data: unknown[] }).data = world.tickets.map((t) => ({ ...t }));
   }
 }
 
@@ -231,7 +232,7 @@ export function registerGtm(app: FastifyInstance, g: GtmSystems, keys: SandboxKe
         return "?";
       });
     if (/^\s*(insert|update|delete|drop|create|alter)\b/i.test(translated)) throw new Error("only SELECT is allowed in the emulator");
-    return alasql(translated, ordered as never) as Row[];
+    return g.db.exec(translated, ordered as never) as Row[];
   };
   const toBqResponse = (rows: Row[], jobId: string, projectId: string) => {
     const fields = rows[0] ? Object.keys(rows[0]) : [];

@@ -1,0 +1,38 @@
+[project]
+name = "revops-agent"
+version = "0.1.0"
+description = "Agent service for the RevOps automations: lead classification, the renewal investigation agent, grounding checks and partner messages."
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi==0.115.6",
+  "uvicorn==0.34.0",
+  "pydantic==2.10.4",
+  "httpx==0.28.1",
+  "numpy==2.2.1",
+  "pyyaml==6.0.2",
+  "anthropic[vertex]==0.42.0",
+  "prometheus-client==0.21.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==8.3.4", "ruff==0.8.4"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["revops_agent", "revops_agent.providers"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"revops_agent/providers/simulated.py" = ["E501"]  # message templates

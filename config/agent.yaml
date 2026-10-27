@@ -1,0 +1,57 @@
+# The agent service: which models it calls, in which order, and the limits it keeps.
+# AGENT_PROVIDER=simulated (the default locally and in CI) serves the same contracts without a model:
+# a text classifier trained on labelled history, a rule-following investigator and templates.
+
+providers:
+  chain: [anthropic, vertex]          # tried in order; a provider whose breaker is open is skipped
+  anthropic:
+    api_key_env: ANTHROPIC_API_KEY    # from Secret Manager on Cloud Run
+  vertex:
+    project_env: VERTEX_PROJECT
+    region: europe-west1
+
+models:
+  lead_classifier: claude-haiku-5-5    # short structured output, high volume
+  renewal_agent: claude-sonnet-5-5     # tool use over several turns
+  brief_writer: claude-sonnet-5-5
+  dealreg_writer: claude-haiku-5-5
+
+limits:
+  max_output_tokens: 1200
+  request_timeout_seconds: 30
+  max_model_calls_per_investigation: 8     # the agent loop gives up (BPMN error NO_BRIEF) after this
+  daily_token_budget: 4000000              # all providers together; above it the service answers 429
+  repair_attempts: 1                       # one retry with the validation errors when output does not parse
+
+breaker:
+  failures_to_open: 3
+  open_seconds: 60
+
+# Prices per million tokens, used for the cost figures in the console. Leave null until set from the current
+# price list; costs are then reported as unknown rather than guessed.
+prices_per_million_tokens:
+  claude-haiku-5-5: { input: null, output: null }
+  claude-sonnet-5-5: { input: null, output: null }
+
+injection:
+  # Phrases that try to give the system instructions. A match never changes what the classifier is asked; it
+  # adds a reason for a person to look (BPMN: DecideReview).
+  patterns:
+    - "ignore (all |your )?(previous|prior) instructions"
+    - "^\\s*system\\s*:"
+    - "\\bsystem\\s*:\\s*classify"
+    - "ignoriere (alle )?(bisherigen )?anweisungen"
+    - "disregard (the )?(above|previous)"
+    - "you are now"
+
+renewal:
+  fact_ids_for_risk:                     # the facts the risk model reads (account_360)
+    - usage.process_instances_change_pct
+    - usage.active_users_change_pct
+    - health.change_12w
+    - contacts.champion_left
+    - support.sev1_30d
+    - forecast.close_date_pushes
+    - forecast.days_since_activity
+    - forecast.manager_call
+  number_tolerance: 0.051                # a number in a claim matches a cited fact within this relative tolerance
