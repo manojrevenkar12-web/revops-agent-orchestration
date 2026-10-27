@@ -1,0 +1,521 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_InboundLeadRouting" targetNamespace="https://revops.example/processes" exporter="revops-agent-orchestration" exporterVersion="0.1.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+  <bpmn:process id="inbound-lead-routing" name="Inbound lead routing" isExecutable="true">
+    <bpmn:documentation>A HubSpot form submission becomes a routed Salesforce lead with an owner, a cadence and a follow-up task. Claude classifies the request, a DMN table routes it, and a person decides whenever the policy says the automation may not: low calibrated confidence, a segment that always gets a person, a message that tries to instruct the system, or no matching rule.</bpmn:documentation>
+    <bpmn:startEvent id="FormSubmitted" name="Form submitted">
+      <bpmn:outgoing>Flow_ToEnrich</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MED_FormSubmitted" messageRef="Message_FormSubmitted" />
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="EnrichLead" name="Look up the person and company">
+      <bpmn:documentation>Matches the submission to a Salesforce account by e-mail domain, derives region and segment, and checks whether the account owner is still active.</bpmn:documentation>
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="lead.enrich" retries="5" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToEnrich</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToClassify</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="ClassifyLead" name="Classify the request">
+      <bpmn:documentation>Claude reads the message (as data, never as instructions) and returns intent, urgency, persona and language as structured output. Confidence is the calibrated probability that the intent is right, not the model's own claim.</bpmn:documentation>
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="agent.lead.classify" retries="3" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToClassify</bpmn:incoming>
+      <bpmn:outgoing>Flow_ClassifiedToRoute</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:boundaryEvent id="ModelUnavailable" name="Model unavailable" attachedToRef="ClassifyLead">
+      <bpmn:outgoing>Flow_ToUnclassified</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="EED_ModelUnavailable" errorRef="Error_ModelUnavailable" />
+    </bpmn:boundaryEvent>
+    <bpmn:scriptTask id="MarkUnclassified" name="Mark as unclassified">
+      <bpmn:extensionElements>
+        <zeebe:script expression="={intent: &#34;unknown&#34;, urgency: &#34;normal&#34;, persona: &#34;unknown&#34;, language: &#34;unknown&#34;, injectionSuspected: false, confidence: 0, source: &#34;none&#34;, rationale: &#34;the classifier was unavailable&#34;}" resultVariable="classification" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToUnclassified</bpmn:incoming>
+      <bpmn:outgoing>Flow_UnclassifiedToRoute</bpmn:outgoing>
+    </bpmn:scriptTask>
+    <bpmn:businessRuleTask id="RouteLead" name="Route the lead">
+      <bpmn:extensionElements>
+        <zeebe:calledDecision decisionId="lead-routing" resultVariable="routing" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ClassifiedToRoute</bpmn:incoming>
+      <bpmn:incoming>Flow_UnclassifiedToRoute</bpmn:incoming>
+      <bpmn:incoming>Flow_EditToRoute</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToPlan</bpmn:outgoing>
+    </bpmn:businessRuleTask>
+    <bpmn:serviceTask id="PlanLead" name="Choose the owner and prepare the changes">
+      <bpmn:documentation>Picks the owner (active account owner, else round robin in the routed queue) and writes down exactly which records will be created: the lead, the cadence enrolment and the follow-up task.</bpmn:documentation>
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="lead.plan" retries="5" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToPlan</bpmn:incoming>
+      <bpmn:incoming>Flow_TimeoutToPlan</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToDecideReview</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:scriptTask id="DecideReview" name="List reasons for a person to decide">
+      <bpmn:extensionElements>
+        <zeebe:script expression="=if is defined(decision) then [] else [&#10;  if policy.mode = &#34;review_all&#34; then &#34;automations are set to review everything&#34; else null,&#10;  if classification.confidence &#60; policy.autoRouteMinProbability then &#34;the classifier is not confident enough&#34; else null,&#10;  if list contains(policy.neverAutoSegments, lead.segment) then &#34;this segment always gets a person&#34; else null,&#10;  if classification.injectionSuspected then &#34;the message tries to instruct the system&#34; else null,&#10;  if routing.action = &#34;review&#34; then &#34;no routing rule applies&#34; else null&#10;][item != null]" resultVariable="reviewReasons" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToDecideReview</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToNeedsPerson</bpmn:outgoing>
+    </bpmn:scriptTask>
+    <bpmn:exclusiveGateway id="NeedsPerson" name="Does a person need to decide?" default="Flow_NoPerson">
+      <bpmn:incoming>Flow_ToNeedsPerson</bpmn:incoming>
+      <bpmn:outgoing>Flow_NeedsPerson</bpmn:outgoing>
+      <bpmn:outgoing>Flow_NoPerson</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="AskAdr" name="Ask the ADR team in Slack">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="slack.approval.request" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="kind" value="lead" />
+          <zeebe:header key="channel" value="lead" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_NeedsPerson</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToAdrDecides</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:receiveTask id="AdrDecides" name="ADR decides" messageRef="Message_ApprovalDecided">
+      <bpmn:incoming>Flow_ToAdrDecides</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToDecisionGateway</bpmn:outgoing>
+    </bpmn:receiveTask>
+    <bpmn:boundaryEvent id="SpeedToLeadReached" name="Speed-to-lead target reached" cancelActivity="false" attachedToRef="AdrDecides">
+      <bpmn:outgoing>Flow_ToRemind</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TED_SpeedToLead">
+        <bpmn:timeDuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="bpmn:tFormalExpression">="PT" + string(routing.slaMinutes) + "M"</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+    <bpmn:serviceTask id="RemindAdrManager" name="Escalate to the ADR manager">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="slack.notify" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="channel" value="lead_escalation" />
+          <zeebe:header key="template" value="lead_sla" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToRemind</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToReminded</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="Reminded" name="Manager reminded">
+      <bpmn:incoming>Flow_ToReminded</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:boundaryEvent id="NoDecision" name="No decision in time" attachedToRef="AdrDecides">
+      <bpmn:outgoing>Flow_ToFallback</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TED_NoDecision">
+        <bpmn:timeDuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="bpmn:tFormalExpression">=policy.reviewTimeout</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+    <bpmn:scriptTask id="FallbackDecision" name="Send to the lead review queue">
+      <bpmn:extensionElements>
+        <zeebe:script expression="={outcome: &#34;timeout&#34;, by: &#34;policy:review-timeout&#34;, edits: {queue: &#34;Lead Review&#34;}}" resultVariable="decision" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToFallback</bpmn:incoming>
+      <bpmn:outgoing>Flow_TimeoutToPlan</bpmn:outgoing>
+    </bpmn:scriptTask>
+    <bpmn:exclusiveGateway id="DecisionGateway" name="What did the ADR decide?" default="Flow_Approved">
+      <bpmn:incoming>Flow_ToDecisionGateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_Rejected</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Edited</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Approved</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="DiscardedByAdr" name="Discarded by the ADR">
+      <bpmn:incoming>Flow_Rejected</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:scriptTask id="UseAdrIntent" name="Use the ADR&#39;s intent">
+      <bpmn:extensionElements>
+        <zeebe:script expression="=context put(context put(classification, &#34;intent&#34;, decision.edits.intent), &#34;source&#34;, &#34;adr&#34;)" resultVariable="classification" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Edited</bpmn:incoming>
+      <bpmn:outgoing>Flow_EditToRoute</bpmn:outgoing>
+    </bpmn:scriptTask>
+    <bpmn:exclusiveGateway id="ActionGateway" name="What happens to the request?" default="Flow_Route">
+      <bpmn:incoming>Flow_NoPerson</bpmn:incoming>
+      <bpmn:incoming>Flow_Approved</bpmn:incoming>
+      <bpmn:outgoing>Flow_Discard</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Forward</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Route</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="Discarded" name="Discarded as spam">
+      <bpmn:incoming>Flow_Discard</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="ForwardRequest" name="Forward to the right team">
+      <bpmn:documentation>Support issues, partnership requests and job applications are not sales leads: they go to the team that handles them, with the classification attached.</bpmn:documentation>
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="slack.notify" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="channel" value="routed_team" />
+          <zeebe:header key="template" value="lead_forward" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Forward</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToForwarded</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="Forwarded" name="Forwarded">
+      <bpmn:incoming>Flow_ToForwarded</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="IssueApprovals" name="Issue approvals for the changes">
+      <bpmn:documentation>Signs one approval per change, bound to its exact arguments, naming who approved: the ADR, or the routing policy when no person was needed. The MCP server refuses any write without one.</bpmn:documentation>
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="approval.issue" retries="3" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=plan.writes" target="writes" />
+          <zeebe:input source="=if is defined(decision) then decision.by else &#34;policy:inbound-lead-routing&#34;" target="approvedBy" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Route</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToUpsert</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="UpsertLead" name="Create the lead in Salesforce">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="mcp.call" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="tool" value="crm_upsert_lead" />
+        </zeebe:taskHeaders>
+        <zeebe:ioMapping>
+          <zeebe:input source="=plan.writes.lead.args" target="args" />
+          <zeebe:input source="=approvals.lead" target="approval" />
+          <zeebe:output source="=toolResult" target="leadResult" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToUpsert</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToEnrollGateway</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="EnrollGateway" name="Enrol in a cadence?" default="Flow_NoEnroll">
+      <bpmn:incoming>Flow_ToEnrollGateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_Enroll</bpmn:outgoing>
+      <bpmn:outgoing>Flow_NoEnroll</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="EnrollCadence" name="Enrol in the Salesloft cadence">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="mcp.call" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="tool" value="seq_enroll" />
+        </zeebe:taskHeaders>
+        <zeebe:ioMapping>
+          <zeebe:input source="=plan.writes.enroll.args" target="args" />
+          <zeebe:input source="=approvals.enroll" target="approval" />
+          <zeebe:output source="=toolResult" target="enrollResult" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Enroll</bpmn:incoming>
+      <bpmn:outgoing>Flow_EnrollToTask</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="CreateFollowUp" name="Create the follow-up task">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="mcp.call" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="tool" value="crm_create_task" />
+        </zeebe:taskHeaders>
+        <zeebe:ioMapping>
+          <zeebe:input source="=plan.writes.task.args" target="args" />
+          <zeebe:input source="=approvals.task" target="approval" />
+          <zeebe:output source="=toolResult" target="taskResult" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_NoEnroll</bpmn:incoming>
+      <bpmn:incoming>Flow_EnrollToTask</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToNotifyOwner</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="NotifyOwner" name="Tell the owner in Slack">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="slack.notify" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="channel" value="owner" />
+          <zeebe:header key="template" value="lead_assigned" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToNotifyOwner</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToRouted</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="LeadRouted" name="Lead routed">
+      <bpmn:incoming>Flow_ToRouted</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_ToEnrich" sourceRef="FormSubmitted" targetRef="EnrichLead" />
+    <bpmn:sequenceFlow id="Flow_ToClassify" sourceRef="EnrichLead" targetRef="ClassifyLead" />
+    <bpmn:sequenceFlow id="Flow_ClassifiedToRoute" sourceRef="ClassifyLead" targetRef="RouteLead" />
+    <bpmn:sequenceFlow id="Flow_ToUnclassified" sourceRef="ModelUnavailable" targetRef="MarkUnclassified" />
+    <bpmn:sequenceFlow id="Flow_UnclassifiedToRoute" sourceRef="MarkUnclassified" targetRef="RouteLead" />
+    <bpmn:sequenceFlow id="Flow_ToPlan" sourceRef="RouteLead" targetRef="PlanLead" />
+    <bpmn:sequenceFlow id="Flow_ToDecideReview" sourceRef="PlanLead" targetRef="DecideReview" />
+    <bpmn:sequenceFlow id="Flow_ToNeedsPerson" sourceRef="DecideReview" targetRef="NeedsPerson" />
+    <bpmn:sequenceFlow id="Flow_NeedsPerson" name="yes" sourceRef="NeedsPerson" targetRef="AskAdr">
+      <bpmn:conditionExpression xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="bpmn:tFormalExpression">=count(reviewReasons) &gt; 0</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_NoPerson" name="no" sourceRef="NeedsPerson" targetRef="ActionGateway" />
+    <bpmn:sequenceFlow id="Flow_ToAdrDecides" sourceRef="AskAdr" targetRef="AdrDecides" />
+    <bpmn:sequenceFlow id="Flow_ToRemind" sourceRef="SpeedToLeadReached" targetRef="RemindAdrManager" />
+    <bpmn:sequenceFlow id="Flow_ToReminded" sourceRef="RemindAdrManager" targetRef="Reminded" />
+    <bpmn:sequenceFlow id="Flow_ToFallback" sourceRef="NoDecision" targetRef="FallbackDecision" />
+    <bpmn:sequenceFlow id="Flow_TimeoutToPlan" sourceRef="FallbackDecision" targetRef="PlanLead" />
+    <bpmn:sequenceFlow id="Flow_ToDecisionGateway" sourceRef="AdrDecides" targetRef="DecisionGateway" />
+    <bpmn:sequenceFlow id="Flow_Rejected" name="reject" sourceRef="DecisionGateway" targetRef="DiscardedByAdr">
+      <bpmn:conditionExpression xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="bpmn:tFormalExpression">=decision.outcome = "reject"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Edited" name="different intent" sourceRef="DecisionGateway" targetRef="UseAdrIntent">
+      <bpmn:conditionExpression xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="bpmn:tFormalExpression">=decision.outcome = "edit"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Approved" name="approve" sourceRef="DecisionGateway" targetRef="ActionGateway" />
+    <bpmn:sequenceFlow id="Flow_EditToRoute" sourceRef="UseAdrIntent" targetRef="RouteLead" />
+    <bpmn:sequenceFlow id="Flow_Discard" name="spam" sourceRef="ActionGateway" targetRef="Discarded">
+      <bpmn:conditionExpression xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="bpmn:tFormalExpression">=routing.action = "discard"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Forward" name="another team" sourceRef="ActionGateway" targetRef="ForwardRequest">
+      <bpmn:conditionExpression xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="bpmn:tFormalExpression">=list contains(["support", "partner", "forward"], routing.action)</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Route" name="sales lead" sourceRef="ActionGateway" targetRef="IssueApprovals" />
+    <bpmn:sequenceFlow id="Flow_ToForwarded" sourceRef="ForwardRequest" targetRef="Forwarded" />
+    <bpmn:sequenceFlow id="Flow_ToUpsert" sourceRef="IssueApprovals" targetRef="UpsertLead" />
+    <bpmn:sequenceFlow id="Flow_ToEnrollGateway" sourceRef="UpsertLead" targetRef="EnrollGateway" />
+    <bpmn:sequenceFlow id="Flow_Enroll" name="yes" sourceRef="EnrollGateway" targetRef="EnrollCadence">
+      <bpmn:conditionExpression xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="bpmn:tFormalExpression">=plan.writes.enroll != null</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_NoEnroll" name="no" sourceRef="EnrollGateway" targetRef="CreateFollowUp" />
+    <bpmn:sequenceFlow id="Flow_EnrollToTask" sourceRef="EnrollCadence" targetRef="CreateFollowUp" />
+    <bpmn:sequenceFlow id="Flow_ToNotifyOwner" sourceRef="CreateFollowUp" targetRef="NotifyOwner" />
+    <bpmn:sequenceFlow id="Flow_ToRouted" sourceRef="NotifyOwner" targetRef="LeadRouted" />
+  </bpmn:process>
+  <bpmn:message id="Message_FormSubmitted" name="hubspot.form.submitted" />
+  <bpmn:message id="Message_ApprovalDecided" name="approval.decided">
+    <bpmn:extensionElements>
+      <zeebe:subscription correlationKey="=approvalId" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:error id="Error_ModelUnavailable" name="Model unavailable" errorCode="MODEL_UNAVAILABLE" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_inbound-lead-routing">
+    <bpmndi:BPMNPlane id="BPMNPlane_inbound-lead-routing" bpmnElement="inbound-lead-routing">
+      <bpmndi:BPMNShape id="FormSubmitted_di" bpmnElement="FormSubmitted">
+        <dc:Bounds x="57" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EnrichLead_di" bpmnElement="EnrichLead">
+        <dc:Bounds x="175" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ClassifyLead_di" bpmnElement="ClassifyLead">
+        <dc:Bounds x="325" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ModelUnavailable_di" bpmnElement="ModelUnavailable">
+        <dc:Bounds x="357" y="92" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="RouteLead_di" bpmnElement="RouteLead">
+        <dc:Bounds x="625" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="PlanLead_di" bpmnElement="PlanLead">
+        <dc:Bounds x="775" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DecideReview_di" bpmnElement="DecideReview">
+        <dc:Bounds x="925" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="NeedsPerson_di" bpmnElement="NeedsPerson" isMarkerVisible="true">
+        <dc:Bounds x="1100" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="AskAdr_di" bpmnElement="AskAdr">
+        <dc:Bounds x="1225" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="AdrDecides_di" bpmnElement="AdrDecides">
+        <dc:Bounds x="1375" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="SpeedToLeadReached_di" bpmnElement="SpeedToLeadReached">
+        <dc:Bounds x="1390.3333333333333" y="92" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="NoDecision_di" bpmnElement="NoDecision">
+        <dc:Bounds x="1423.6666666666667" y="92" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DecisionGateway_di" bpmnElement="DecisionGateway" isMarkerVisible="true">
+        <dc:Bounds x="1550" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DiscardedByAdr_di" bpmnElement="DiscardedByAdr">
+        <dc:Bounds x="1707" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ActionGateway_di" bpmnElement="ActionGateway" isMarkerVisible="true">
+        <dc:Bounds x="1850" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Discarded_di" bpmnElement="Discarded">
+        <dc:Bounds x="2007" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="FallbackDecision_di" bpmnElement="FallbackDecision">
+        <dc:Bounds x="1525" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UseAdrIntent_di" bpmnElement="UseAdrIntent">
+        <dc:Bounds x="1675" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ForwardRequest_di" bpmnElement="ForwardRequest">
+        <dc:Bounds x="1975" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Forwarded_di" bpmnElement="Forwarded">
+        <dc:Bounds x="2157" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="MarkUnclassified_di" bpmnElement="MarkUnclassified">
+        <dc:Bounds x="475" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="RemindAdrManager_di" bpmnElement="RemindAdrManager">
+        <dc:Bounds x="1525" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Reminded_di" bpmnElement="Reminded">
+        <dc:Bounds x="1707" y="332" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="IssueApprovals_di" bpmnElement="IssueApprovals">
+        <dc:Bounds x="1975" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UpsertLead_di" bpmnElement="UpsertLead">
+        <dc:Bounds x="2125" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EnrollGateway_di" bpmnElement="EnrollGateway" isMarkerVisible="true">
+        <dc:Bounds x="2300" y="325" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EnrollCadence_di" bpmnElement="EnrollCadence">
+        <dc:Bounds x="2425" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CreateFollowUp_di" bpmnElement="CreateFollowUp">
+        <dc:Bounds x="2575" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="NotifyOwner_di" bpmnElement="NotifyOwner">
+        <dc:Bounds x="2725" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="LeadRouted_di" bpmnElement="LeadRouted">
+        <dc:Bounds x="2907" y="332" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_ToEnrich_di" bpmnElement="Flow_ToEnrich">
+        <di:waypoint x="93" y="70" />
+        <di:waypoint x="175" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToClassify_di" bpmnElement="Flow_ToClassify">
+        <di:waypoint x="275" y="70" />
+        <di:waypoint x="325" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ClassifiedToRoute_di" bpmnElement="Flow_ClassifiedToRoute">
+        <di:waypoint x="425" y="70" />
+        <di:waypoint x="625" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToUnclassified_di" bpmnElement="Flow_ToUnclassified">
+        <di:waypoint x="375" y="128" />
+        <di:waypoint x="375" y="350" />
+        <di:waypoint x="475" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToPlan_di" bpmnElement="Flow_ToPlan">
+        <di:waypoint x="725" y="70" />
+        <di:waypoint x="775" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToDecideReview_di" bpmnElement="Flow_ToDecideReview">
+        <di:waypoint x="875" y="70" />
+        <di:waypoint x="925" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToNeedsPerson_di" bpmnElement="Flow_ToNeedsPerson">
+        <di:waypoint x="1025" y="70" />
+        <di:waypoint x="1100" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_NeedsPerson_di" bpmnElement="Flow_NeedsPerson">
+        <di:waypoint x="1150" y="70" />
+        <di:waypoint x="1225" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_NoPerson_di" bpmnElement="Flow_NoPerson">
+        <di:waypoint x="1125" y="95" />
+        <di:waypoint x="1125" y="140" />
+        <di:waypoint x="1875" y="140" />
+        <di:waypoint x="1875" y="95" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToAdrDecides_di" bpmnElement="Flow_ToAdrDecides">
+        <di:waypoint x="1325" y="70" />
+        <di:waypoint x="1375" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToDecisionGateway_di" bpmnElement="Flow_ToDecisionGateway">
+        <di:waypoint x="1475" y="70" />
+        <di:waypoint x="1550" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToRemind_di" bpmnElement="Flow_ToRemind">
+        <di:waypoint x="1408.3333333333333" y="128" />
+        <di:waypoint x="1408.3333333333333" y="350" />
+        <di:waypoint x="1525" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToFallback_di" bpmnElement="Flow_ToFallback">
+        <di:waypoint x="1441.6666666666667" y="128" />
+        <di:waypoint x="1441.6666666666667" y="210" />
+        <di:waypoint x="1525" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Rejected_di" bpmnElement="Flow_Rejected">
+        <di:waypoint x="1600" y="70" />
+        <di:waypoint x="1707" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Edited_di" bpmnElement="Flow_Edited">
+        <di:waypoint x="1600" y="70" />
+        <di:waypoint x="1650" y="70" />
+        <di:waypoint x="1650" y="140" />
+        <di:waypoint x="1650" y="140" />
+        <di:waypoint x="1650" y="210" />
+        <di:waypoint x="1675" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Approved_di" bpmnElement="Flow_Approved">
+        <di:waypoint x="1575" y="95" />
+        <di:waypoint x="1575" y="140" />
+        <di:waypoint x="1875" y="140" />
+        <di:waypoint x="1875" y="95" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Discard_di" bpmnElement="Flow_Discard">
+        <di:waypoint x="1900" y="70" />
+        <di:waypoint x="2007" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Forward_di" bpmnElement="Flow_Forward">
+        <di:waypoint x="1875" y="95" />
+        <di:waypoint x="1875" y="210" />
+        <di:waypoint x="1975" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Route_di" bpmnElement="Flow_Route">
+        <di:waypoint x="1875" y="95" />
+        <di:waypoint x="1875" y="350" />
+        <di:waypoint x="1975" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_TimeoutToPlan_di" bpmnElement="Flow_TimeoutToPlan">
+        <di:waypoint x="1575" y="250" />
+        <di:waypoint x="1575" y="280" />
+        <di:waypoint x="825" y="280" />
+        <di:waypoint x="825" y="110" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_EditToRoute_di" bpmnElement="Flow_EditToRoute">
+        <di:waypoint x="1725" y="250" />
+        <di:waypoint x="1725" y="280" />
+        <di:waypoint x="675" y="280" />
+        <di:waypoint x="675" y="110" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToForwarded_di" bpmnElement="Flow_ToForwarded">
+        <di:waypoint x="2075" y="210" />
+        <di:waypoint x="2157" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_UnclassifiedToRoute_di" bpmnElement="Flow_UnclassifiedToRoute">
+        <di:waypoint x="575" y="350" />
+        <di:waypoint x="675" y="350" />
+        <di:waypoint x="675" y="110" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToReminded_di" bpmnElement="Flow_ToReminded">
+        <di:waypoint x="1625" y="350" />
+        <di:waypoint x="1707" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToUpsert_di" bpmnElement="Flow_ToUpsert">
+        <di:waypoint x="2075" y="350" />
+        <di:waypoint x="2125" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToEnrollGateway_di" bpmnElement="Flow_ToEnrollGateway">
+        <di:waypoint x="2225" y="350" />
+        <di:waypoint x="2300" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Enroll_di" bpmnElement="Flow_Enroll">
+        <di:waypoint x="2350" y="350" />
+        <di:waypoint x="2425" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_NoEnroll_di" bpmnElement="Flow_NoEnroll">
+        <di:waypoint x="2325" y="375" />
+        <di:waypoint x="2325" y="420" />
+        <di:waypoint x="2625" y="420" />
+        <di:waypoint x="2625" y="390" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_EnrollToTask_di" bpmnElement="Flow_EnrollToTask">
+        <di:waypoint x="2525" y="350" />
+        <di:waypoint x="2575" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToNotifyOwner_di" bpmnElement="Flow_ToNotifyOwner">
+        <di:waypoint x="2675" y="350" />
+        <di:waypoint x="2725" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToRouted_di" bpmnElement="Flow_ToRouted">
+        <di:waypoint x="2825" y="350" />
+        <di:waypoint x="2907" y="350" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

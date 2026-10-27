@@ -28,6 +28,9 @@
       },
       "complexity": {
         "noForEach": "off"
+      },
+      "correctness": {
+        "noVoidTypeReturn": "off"
       }
     }
   }

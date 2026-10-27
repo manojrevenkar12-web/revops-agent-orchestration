@@ -1,0 +1,506 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_RenewalRisk" targetNamespace="https://revops.example/processes" exporter="revops-agent-orchestration" exporterVersion="0.1.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+  <bpmn:process id="renewal-risk-save-play" name="Renewal risk save play" isExecutable="true">
+    <bpmn:documentation>A signal on a renewal (a pushed close date, the weekly scan) starts an investigation: an AI agent gathers facts from Salesforce, Gainsight, Clari, the product warehouse and the playbooks, and writes a brief in which every claim cites a fact. The brief is checked claim by claim. Only a grounded brief with a calibrated risk above the policy threshold reaches the CSM, who approves or declines the save play in Slack.</bpmn:documentation>
+    <bpmn:startEvent id="RenewalSignal" name="Renewal signal">
+      <bpmn:outgoing>Flow_ToInvestigate</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MED_RenewalSignal" messageRef="Message_RenewalSignal" />
+    </bpmn:startEvent>
+    <bpmn:adHocSubProcess id="Investigate" name="Investigate the renewal">
+      <bpmn:documentation>The agent decides which tool to call next; Camunda runs each call as an ordinary service task with retries, incidents and audit. The agent's loop is bounded by a number of model calls and a time budget.</bpmn:documentation>
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="agent.renewal.investigate" retries="3" />
+        <zeebe:properties>
+          <zeebe:property name="io.camunda.agenticai.toolContainer" value="true" />
+        </zeebe:properties>
+        <zeebe:adHoc outputCollection="toolCallResults" outputElement="={id: toolCall._meta.id, name: toolCall._meta.name, content: toolCallResult}" />
+        <zeebe:ioMapping>
+          <zeebe:output source="=agent.brief" target="brief" />
+          <zeebe:output source="=agent.stats" target="agentStats" />
+          <zeebe:output source="=toolCallResults" target="evidence" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToInvestigate</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToVerify</bpmn:outgoing>
+      <bpmn:serviceTask id="Account360" name="Get the account 360">
+        <bpmn:documentation>Everything the GTM systems know about one account: renewal, usage and health trends, support tickets, champion status and forecast calls, returned as facts with ids to cite.</bpmn:documentation>
+        <bpmn:extensionElements>
+          <zeebe:taskDefinition type="mcp.call" retries="3" />
+          <zeebe:taskHeaders>
+            <zeebe:header key="tool" value="account_360" />
+          </zeebe:taskHeaders>
+          <zeebe:ioMapping>
+            <zeebe:input source="={account_id: fromAi(toolCall.accountId, &#34;Salesforce Account Id of the account to investigate&#34;, &#34;string&#34;)}" target="args" />
+            <zeebe:output source="=toolResult" target="toolCallResult" />
+          </zeebe:ioMapping>
+        </bpmn:extensionElements>
+      </bpmn:serviceTask>
+      <bpmn:serviceTask id="SearchPlaybooks" name="Search the playbooks">
+        <bpmn:documentation>Searches the customer-success playbooks for the play that fits a risk. Returns passages with ids to cite.</bpmn:documentation>
+        <bpmn:extensionElements>
+          <zeebe:taskDefinition type="mcp.call" retries="3" />
+          <zeebe:taskHeaders>
+            <zeebe:header key="tool" value="playbook_search" />
+          </zeebe:taskHeaders>
+          <zeebe:ioMapping>
+            <zeebe:input source="={query: fromAi(toolCall.query, &#34;What to look up, for example the risk you found&#34;, &#34;string&#34;), k: 3}" target="args" />
+            <zeebe:output source="=toolResult" target="toolCallResult" />
+          </zeebe:ioMapping>
+        </bpmn:extensionElements>
+      </bpmn:serviceTask>
+      <bpmn:serviceTask id="OpenOpportunities" name="List open opportunities">
+        <bpmn:documentation>Open opportunities on the account, to see whether an expansion or a partner is involved.</bpmn:documentation>
+        <bpmn:extensionElements>
+          <zeebe:taskDefinition type="mcp.call" retries="3" />
+          <zeebe:taskHeaders>
+            <zeebe:header key="tool" value="open_opportunities" />
+          </zeebe:taskHeaders>
+          <zeebe:ioMapping>
+            <zeebe:input source="={account_id: fromAi(toolCall.accountId, &#34;Salesforce Account Id&#34;, &#34;string&#34;)}" target="args" />
+            <zeebe:output source="=toolResult" target="toolCallResult" />
+          </zeebe:ioMapping>
+        </bpmn:extensionElements>
+      </bpmn:serviceTask>
+    </bpmn:adHocSubProcess>
+    <bpmn:boundaryEvent id="AgentTimeBudget" name="Time budget used" attachedToRef="Investigate">
+      <bpmn:outgoing>Flow_TimeToNoBrief</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TED_AgentTimeBudget">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">=policy.agentTimeBudget</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+    <bpmn:boundaryEvent id="AgentGaveUp" name="No brief" attachedToRef="Investigate">
+      <bpmn:outgoing>Flow_GaveUpToNoBrief</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="EED_AgentGaveUp" errorRef="Error_NoBrief" />
+    </bpmn:boundaryEvent>
+    <bpmn:serviceTask id="NotifyCsmNoBrief" name="Hand the facts to the CSM">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="slack.notify" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="channel" value="renewal" />
+          <zeebe:header key="template" value="renewal_no_brief" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_TimeToNoBrief</bpmn:incoming>
+      <bpmn:incoming>Flow_GaveUpToNoBrief</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToHandedOver</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="HandedOverWithoutBrief" name="Handed over without a brief">
+      <bpmn:incoming>Flow_ToHandedOver</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="VerifyBrief" name="Check every claim against the facts">
+      <bpmn:documentation>Each claim must cite fact or passage ids that exist in the evidence, and numbers must match the cited facts. The risk probability comes from a calibrated model over the same facts, not from the agent's wording.</bpmn:documentation>
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="agent.brief.verify" retries="3" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToVerify</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToRiskGateway</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="RiskGateway" name="Grounded and at risk?" default="Flow_AtRisk">
+      <bpmn:incoming>Flow_ToRiskGateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_Ungrounded</bpmn:outgoing>
+      <bpmn:outgoing>Flow_NotAtRisk</bpmn:outgoing>
+      <bpmn:outgoing>Flow_AtRisk</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="NotifyCsmUnverified" name="Send the facts without a proposal">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="slack.notify" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="channel" value="renewal" />
+          <zeebe:header key="template" value="renewal_unverified" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Ungrounded</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToSentUnverified</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="SentUnverified" name="Sent to the CSM unverified">
+      <bpmn:incoming>Flow_ToSentUnverified</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="NoActionNeeded" name="No action needed">
+      <bpmn:incoming>Flow_NotAtRisk</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="PlanSavePlay" name="Prepare the CTA and the renewal task">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="renewal.plan" retries="5" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_AtRisk</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToAskCsm</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="AskCsm" name="Ask the CSM in Slack">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="slack.approval.request" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="kind" value="renewal" />
+          <zeebe:header key="channel" value="renewal" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToAskCsm</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToCsmDecides</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:receiveTask id="CsmDecides" name="CSM decides" messageRef="Message_ApprovalDecided">
+      <bpmn:incoming>Flow_ToCsmDecides</bpmn:incoming>
+      <bpmn:outgoing>Flow_CsmToDecision</bpmn:outgoing>
+    </bpmn:receiveTask>
+    <bpmn:boundaryEvent id="CsmDeadline" name="Approval deadline" attachedToRef="CsmDecides">
+      <bpmn:outgoing>Flow_ToEscalate</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TED_CsmDeadline">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">=policy.approvalDeadline</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+    <bpmn:serviceTask id="EscalateToCsLead" name="Escalate to the CS lead">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="slack.notify" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="channel" value="renewal_escalation" />
+          <zeebe:header key="template" value="renewal_escalation" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToEscalate</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToCsLeadDecides</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:receiveTask id="CsLeadDecides" name="CS lead decides" messageRef="Message_ApprovalDecided">
+      <bpmn:incoming>Flow_ToCsLeadDecides</bpmn:incoming>
+      <bpmn:outgoing>Flow_LeadToDecision</bpmn:outgoing>
+    </bpmn:receiveTask>
+    <bpmn:boundaryEvent id="CsLeadDeadline" name="Second deadline" attachedToRef="CsLeadDecides">
+      <bpmn:outgoing>Flow_ToCloseUnanswered</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TED_CsLeadDeadline">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">=policy.approvalDeadline</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+    <bpmn:serviceTask id="CloseUnanswered" name="Mark the request expired">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="slack.approval.close" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="outcome" value="expired" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToCloseUnanswered</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToExpired</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="ExpiredWithoutDecision" name="Expired without a decision">
+      <bpmn:incoming>Flow_ToExpired</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:exclusiveGateway id="CsmDecision" name="Save play approved?" default="Flow_SaveApproved">
+      <bpmn:incoming>Flow_CsmToDecision</bpmn:incoming>
+      <bpmn:incoming>Flow_LeadToDecision</bpmn:incoming>
+      <bpmn:outgoing>Flow_SaveRejected</bpmn:outgoing>
+      <bpmn:outgoing>Flow_SaveApproved</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="CloseRejected" name="Record the decline">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="slack.approval.close" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="outcome" value="declined" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_SaveRejected</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToDeclined</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="CsmDeclined" name="CSM declined">
+      <bpmn:incoming>Flow_ToDeclined</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="IssueRenewalApprovals" name="Issue approvals for the save play">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="approval.issue" retries="3" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=plan.writes" target="writes" />
+          <zeebe:input source="=decision.by" target="approvedBy" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_SaveApproved</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToCreateCta</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="CreateCta" name="Create the CTA in Gainsight">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="mcp.call" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="tool" value="cs_create_cta" />
+        </zeebe:taskHeaders>
+        <zeebe:ioMapping>
+          <zeebe:input source="=plan.writes.cta.args" target="args" />
+          <zeebe:input source="=approvals.cta" target="approval" />
+          <zeebe:output source="=toolResult" target="ctaResult" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToCreateCta</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToCreateTask</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="CreateRenewalTask" name="Create the renewal task in Salesforce">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="mcp.call" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="tool" value="crm_create_task" />
+        </zeebe:taskHeaders>
+        <zeebe:ioMapping>
+          <zeebe:input source="=plan.writes.task.args" target="args" />
+          <zeebe:input source="=approvals.task" target="approval" />
+          <zeebe:output source="=toolResult" target="taskResult" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToCreateTask</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToCloseApproved</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="CloseApproved" name="Confirm in Slack">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="slack.approval.close" retries="5" />
+        <zeebe:taskHeaders>
+          <zeebe:header key="outcome" value="done" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToCloseApproved</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToSavePlayStarted</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="SavePlayStarted" name="Save play started">
+      <bpmn:incoming>Flow_ToSavePlayStarted</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_ToInvestigate" sourceRef="RenewalSignal" targetRef="Investigate" />
+    <bpmn:sequenceFlow id="Flow_TimeToNoBrief" sourceRef="AgentTimeBudget" targetRef="NotifyCsmNoBrief" />
+    <bpmn:sequenceFlow id="Flow_GaveUpToNoBrief" sourceRef="AgentGaveUp" targetRef="NotifyCsmNoBrief" />
+    <bpmn:sequenceFlow id="Flow_ToHandedOver" sourceRef="NotifyCsmNoBrief" targetRef="HandedOverWithoutBrief" />
+    <bpmn:sequenceFlow id="Flow_ToVerify" sourceRef="Investigate" targetRef="VerifyBrief" />
+    <bpmn:sequenceFlow id="Flow_ToRiskGateway" sourceRef="VerifyBrief" targetRef="RiskGateway" />
+    <bpmn:sequenceFlow id="Flow_Ungrounded" name="unsupported claims" sourceRef="RiskGateway" targetRef="NotifyCsmUnverified">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=verification.grounded = false</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_NotAtRisk" name="below threshold" sourceRef="RiskGateway" targetRef="NoActionNeeded">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=verification.riskProbability &lt; policy.createCtaMinProbability</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_AtRisk" name="at risk" sourceRef="RiskGateway" targetRef="PlanSavePlay" />
+    <bpmn:sequenceFlow id="Flow_ToSentUnverified" sourceRef="NotifyCsmUnverified" targetRef="SentUnverified" />
+    <bpmn:sequenceFlow id="Flow_ToAskCsm" sourceRef="PlanSavePlay" targetRef="AskCsm" />
+    <bpmn:sequenceFlow id="Flow_ToCsmDecides" sourceRef="AskCsm" targetRef="CsmDecides" />
+    <bpmn:sequenceFlow id="Flow_ToEscalate" sourceRef="CsmDeadline" targetRef="EscalateToCsLead" />
+    <bpmn:sequenceFlow id="Flow_ToCsLeadDecides" sourceRef="EscalateToCsLead" targetRef="CsLeadDecides" />
+    <bpmn:sequenceFlow id="Flow_ToCloseUnanswered" sourceRef="CsLeadDeadline" targetRef="CloseUnanswered" />
+    <bpmn:sequenceFlow id="Flow_ToExpired" sourceRef="CloseUnanswered" targetRef="ExpiredWithoutDecision" />
+    <bpmn:sequenceFlow id="Flow_CsmToDecision" sourceRef="CsmDecides" targetRef="CsmDecision" />
+    <bpmn:sequenceFlow id="Flow_LeadToDecision" sourceRef="CsLeadDecides" targetRef="CsmDecision" />
+    <bpmn:sequenceFlow id="Flow_SaveRejected" name="decline" sourceRef="CsmDecision" targetRef="CloseRejected">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=decision.outcome = "reject"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_SaveApproved" name="approve" sourceRef="CsmDecision" targetRef="IssueRenewalApprovals" />
+    <bpmn:sequenceFlow id="Flow_ToDeclined" sourceRef="CloseRejected" targetRef="CsmDeclined" />
+    <bpmn:sequenceFlow id="Flow_ToCreateCta" sourceRef="IssueRenewalApprovals" targetRef="CreateCta" />
+    <bpmn:sequenceFlow id="Flow_ToCreateTask" sourceRef="CreateCta" targetRef="CreateRenewalTask" />
+    <bpmn:sequenceFlow id="Flow_ToCloseApproved" sourceRef="CreateRenewalTask" targetRef="CloseApproved" />
+    <bpmn:sequenceFlow id="Flow_ToSavePlayStarted" sourceRef="CloseApproved" targetRef="SavePlayStarted" />
+  </bpmn:process>
+  <bpmn:message id="Message_RenewalSignal" name="renewal.signal" />
+  <bpmn:message id="Message_ApprovalDecided" name="approval.decided">
+    <bpmn:extensionElements>
+      <zeebe:subscription correlationKey="=approvalId" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:error id="Error_NoBrief" name="No brief" errorCode="NO_BRIEF" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_renewal-risk-save-play">
+    <bpmndi:BPMNPlane id="BPMNPlane_renewal-risk-save-play" bpmnElement="renewal-risk-save-play">
+      <bpmndi:BPMNShape id="RenewalSignal_di" bpmnElement="RenewalSignal">
+        <dc:Bounds x="57" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Investigate_di" bpmnElement="Investigate">
+        <dc:Bounds x="175" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="AgentTimeBudget_di" bpmnElement="AgentTimeBudget">
+        <dc:Bounds x="190.33333333333334" y="92" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="AgentGaveUp_di" bpmnElement="AgentGaveUp">
+        <dc:Bounds x="223.66666666666669" y="92" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="VerifyBrief_di" bpmnElement="VerifyBrief">
+        <dc:Bounds x="325" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="RiskGateway_di" bpmnElement="RiskGateway" isMarkerVisible="true">
+        <dc:Bounds x="500" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="NotifyCsmUnverified_di" bpmnElement="NotifyCsmUnverified">
+        <dc:Bounds x="625" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="SentUnverified_di" bpmnElement="SentUnverified">
+        <dc:Bounds x="807" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="NotifyCsmNoBrief_di" bpmnElement="NotifyCsmNoBrief">
+        <dc:Bounds x="325" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="HandedOverWithoutBrief_di" bpmnElement="HandedOverWithoutBrief">
+        <dc:Bounds x="507" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="NoActionNeeded_di" bpmnElement="NoActionNeeded">
+        <dc:Bounds x="657" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="PlanSavePlay_di" bpmnElement="PlanSavePlay">
+        <dc:Bounds x="625" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="AskCsm_di" bpmnElement="AskCsm">
+        <dc:Bounds x="775" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CsmDecides_di" bpmnElement="CsmDecides">
+        <dc:Bounds x="925" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CsmDeadline_di" bpmnElement="CsmDeadline">
+        <dc:Bounds x="957" y="372" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CsmDecision_di" bpmnElement="CsmDecision" isMarkerVisible="true">
+        <dc:Bounds x="1700" y="325" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CloseRejected_di" bpmnElement="CloseRejected">
+        <dc:Bounds x="1825" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CsmDeclined_di" bpmnElement="CsmDeclined">
+        <dc:Bounds x="2007" y="332" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EscalateToCsLead_di" bpmnElement="EscalateToCsLead">
+        <dc:Bounds x="1075" y="450" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CsLeadDecides_di" bpmnElement="CsLeadDecides">
+        <dc:Bounds x="1225" y="450" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CsLeadDeadline_di" bpmnElement="CsLeadDeadline">
+        <dc:Bounds x="1257" y="512" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="IssueRenewalApprovals_di" bpmnElement="IssueRenewalApprovals">
+        <dc:Bounds x="1825" y="450" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CreateCta_di" bpmnElement="CreateCta">
+        <dc:Bounds x="1975" y="450" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CreateRenewalTask_di" bpmnElement="CreateRenewalTask">
+        <dc:Bounds x="2125" y="450" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CloseApproved_di" bpmnElement="CloseApproved">
+        <dc:Bounds x="2275" y="450" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="SavePlayStarted_di" bpmnElement="SavePlayStarted">
+        <dc:Bounds x="2457" y="472" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CloseUnanswered_di" bpmnElement="CloseUnanswered">
+        <dc:Bounds x="1375" y="590" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ExpiredWithoutDecision_di" bpmnElement="ExpiredWithoutDecision">
+        <dc:Bounds x="1557" y="612" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_ToInvestigate_di" bpmnElement="Flow_ToInvestigate">
+        <di:waypoint x="93" y="70" />
+        <di:waypoint x="175" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToVerify_di" bpmnElement="Flow_ToVerify">
+        <di:waypoint x="275" y="70" />
+        <di:waypoint x="325" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_TimeToNoBrief_di" bpmnElement="Flow_TimeToNoBrief">
+        <di:waypoint x="208.33333333333334" y="128" />
+        <di:waypoint x="208.33333333333334" y="210" />
+        <di:waypoint x="325" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_GaveUpToNoBrief_di" bpmnElement="Flow_GaveUpToNoBrief">
+        <di:waypoint x="241.66666666666669" y="128" />
+        <di:waypoint x="241.66666666666669" y="210" />
+        <di:waypoint x="325" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToRiskGateway_di" bpmnElement="Flow_ToRiskGateway">
+        <di:waypoint x="425" y="70" />
+        <di:waypoint x="500" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Ungrounded_di" bpmnElement="Flow_Ungrounded">
+        <di:waypoint x="550" y="70" />
+        <di:waypoint x="625" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_NotAtRisk_di" bpmnElement="Flow_NotAtRisk">
+        <di:waypoint x="550" y="70" />
+        <di:waypoint x="600" y="70" />
+        <di:waypoint x="600" y="140" />
+        <di:waypoint x="600" y="140" />
+        <di:waypoint x="600" y="210" />
+        <di:waypoint x="657" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_AtRisk_di" bpmnElement="Flow_AtRisk">
+        <di:waypoint x="550" y="70" />
+        <di:waypoint x="600" y="70" />
+        <di:waypoint x="600" y="280" />
+        <di:waypoint x="600" y="280" />
+        <di:waypoint x="600" y="350" />
+        <di:waypoint x="625" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToSentUnverified_di" bpmnElement="Flow_ToSentUnverified">
+        <di:waypoint x="725" y="70" />
+        <di:waypoint x="807" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToHandedOver_di" bpmnElement="Flow_ToHandedOver">
+        <di:waypoint x="425" y="210" />
+        <di:waypoint x="507" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToAskCsm_di" bpmnElement="Flow_ToAskCsm">
+        <di:waypoint x="725" y="350" />
+        <di:waypoint x="775" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToCsmDecides_di" bpmnElement="Flow_ToCsmDecides">
+        <di:waypoint x="875" y="350" />
+        <di:waypoint x="925" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_CsmToDecision_di" bpmnElement="Flow_CsmToDecision">
+        <di:waypoint x="1025" y="350" />
+        <di:waypoint x="1700" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToEscalate_di" bpmnElement="Flow_ToEscalate">
+        <di:waypoint x="975" y="408" />
+        <di:waypoint x="975" y="490" />
+        <di:waypoint x="1075" y="490" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_SaveRejected_di" bpmnElement="Flow_SaveRejected">
+        <di:waypoint x="1750" y="350" />
+        <di:waypoint x="1825" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_SaveApproved_di" bpmnElement="Flow_SaveApproved">
+        <di:waypoint x="1725" y="375" />
+        <di:waypoint x="1725" y="490" />
+        <di:waypoint x="1825" y="490" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToDeclined_di" bpmnElement="Flow_ToDeclined">
+        <di:waypoint x="1925" y="350" />
+        <di:waypoint x="2007" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToCsLeadDecides_di" bpmnElement="Flow_ToCsLeadDecides">
+        <di:waypoint x="1175" y="490" />
+        <di:waypoint x="1225" y="490" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_LeadToDecision_di" bpmnElement="Flow_LeadToDecision">
+        <di:waypoint x="1325" y="490" />
+        <di:waypoint x="1725" y="490" />
+        <di:waypoint x="1725" y="375" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToCloseUnanswered_di" bpmnElement="Flow_ToCloseUnanswered">
+        <di:waypoint x="1275" y="548" />
+        <di:waypoint x="1275" y="630" />
+        <di:waypoint x="1375" y="630" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToCreateCta_di" bpmnElement="Flow_ToCreateCta">
+        <di:waypoint x="1925" y="490" />
+        <di:waypoint x="1975" y="490" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToCreateTask_di" bpmnElement="Flow_ToCreateTask">
+        <di:waypoint x="2075" y="490" />
+        <di:waypoint x="2125" y="490" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToCloseApproved_di" bpmnElement="Flow_ToCloseApproved">
+        <di:waypoint x="2225" y="490" />
+        <di:waypoint x="2275" y="490" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToSavePlayStarted_di" bpmnElement="Flow_ToSavePlayStarted">
+        <di:waypoint x="2375" y="490" />
+        <di:waypoint x="2457" y="490" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToExpired_di" bpmnElement="Flow_ToExpired">
+        <di:waypoint x="1475" y="630" />
+        <di:waypoint x="1557" y="630" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Account360_di" bpmnElement="Account360">
+        <dc:Bounds x="25" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="SearchPlaybooks_di" bpmnElement="SearchPlaybooks">
+        <dc:Bounds x="25" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="OpenOpportunities_di" bpmnElement="OpenOpportunities">
+        <dc:Bounds x="25" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

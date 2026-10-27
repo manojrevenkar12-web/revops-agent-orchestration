@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_LeadRouting" name="Lead routing" namespace="https://revops.example/decisions" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+  <decision id="lead-routing" name="Lead routing">
+    <decisionTable id="LeadRoutingTable" hitPolicy="FIRST">
+      <input id="In_Intent" label="Intent">
+        <inputExpression id="InExpr_Intent" typeRef="string">
+          <text>classification.intent</text>
+        </inputExpression>
+      </input>
+      <input id="In_Customer" label="Existing customer">
+        <inputExpression id="InExpr_Customer" typeRef="boolean">
+          <text>lead.isCustomer</text>
+        </inputExpression>
+      </input>
+      <input id="In_Segment" label="Segment">
+        <inputExpression id="InExpr_Segment" typeRef="string">
+          <text>lead.segment</text>
+        </inputExpression>
+      </input>
+      <input id="In_Urgency" label="Urgency">
+        <inputExpression id="InExpr_Urgency" typeRef="string">
+          <text>classification.urgency</text>
+        </inputExpression>
+      </input>
+      <output id="Out_Action" label="Action" name="action" typeRef="string" />
+      <output id="Out_Queue" label="Queue" name="queue" typeRef="string" />
+      <output id="Out_Cadence" label="Cadence" name="cadenceKey" typeRef="string" />
+      <output id="Out_Sla" label="Speed to lead (minutes)" name="slaMinutes" typeRef="number" />
+      <rule id="Rule_Spam">
+        <description>Spam is discarded</description>
+        <inputEntry id="IE_1_1"><text>"spam"</text></inputEntry>
+        <inputEntry id="IE_1_2"><text>-</text></inputEntry>
+        <inputEntry id="IE_1_3"><text>-</text></inputEntry>
+        <inputEntry id="IE_1_4"><text>-</text></inputEntry>
+        <outputEntry id="OE_1_1"><text>"discard"</text></outputEntry>
+        <outputEntry id="OE_1_2"><text>null</text></outputEntry>
+        <outputEntry id="OE_1_3"><text>null</text></outputEntry>
+        <outputEntry id="OE_1_4"><text>60</text></outputEntry>
+      </rule>
+      <rule id="Rule_Jobs">
+        <description>Job applications go to Talent</description>
+        <inputEntry id="IE_2_1"><text>"job_application"</text></inputEntry>
+        <inputEntry id="IE_2_2"><text>-</text></inputEntry>
+        <inputEntry id="IE_2_3"><text>-</text></inputEntry>
+        <inputEntry id="IE_2_4"><text>-</text></inputEntry>
+        <outputEntry id="OE_2_1"><text>"forward"</text></outputEntry>
+        <outputEntry id="OE_2_2"><text>"Talent"</text></outputEntry>
+        <outputEntry id="OE_2_3"><text>null</text></outputEntry>
+        <outputEntry id="OE_2_4"><text>60</text></outputEntry>
+      </rule>
+      <rule id="Rule_SupportCustomer">
+        <description>A customer's support issue goes to Support</description>
+        <inputEntry id="IE_3_1"><text>"support_issue"</text></inputEntry>
+        <inputEntry id="IE_3_2"><text>true</text></inputEntry>
+        <inputEntry id="IE_3_3"><text>-</text></inputEntry>
+        <inputEntry id="IE_3_4"><text>-</text></inputEntry>
+        <outputEntry id="OE_3_1"><text>"support"</text></outputEntry>
+        <outputEntry id="OE_3_2"><text>"Customer Support"</text></outputEntry>
+        <outputEntry id="OE_3_3"><text>null</text></outputEntry>
+        <outputEntry id="OE_3_4"><text>30</text></outputEntry>
+      </rule>
+      <rule id="Rule_SupportProspect">
+        <description>A prospect's technical question goes to the community team</description>
+        <inputEntry id="IE_4_1"><text>"support_issue"</text></inputEntry>
+        <inputEntry id="IE_4_2"><text>-</text></inputEntry>
+        <inputEntry id="IE_4_3"><text>-</text></inputEntry>
+        <inputEntry id="IE_4_4"><text>-</text></inputEntry>
+        <outputEntry id="OE_4_1"><text>"support"</text></outputEntry>
+        <outputEntry id="OE_4_2"><text>"Community"</text></outputEntry>
+        <outputEntry id="OE_4_3"><text>null</text></outputEntry>
+        <outputEntry id="OE_4_4"><text>60</text></outputEntry>
+      </rule>
+      <rule id="Rule_Partner">
+        <description>Partnership requests go to the partner team</description>
+        <inputEntry id="IE_5_1"><text>"partnership"</text></inputEntry>
+        <inputEntry id="IE_5_2"><text>-</text></inputEntry>
+        <inputEntry id="IE_5_3"><text>-</text></inputEntry>
+        <inputEntry id="IE_5_4"><text>-</text></inputEntry>
+        <outputEntry id="OE_5_1"><text>"partner"</text></outputEntry>
+        <outputEntry id="OE_5_2"><text>"Partner Team"</text></outputEntry>
+        <outputEntry id="OE_5_3"><text>null</text></outputEntry>
+        <outputEntry id="OE_5_4"><text>60</text></outputEntry>
+      </rule>
+      <rule id="Rule_Expansion">
+        <description>A customer asking to expand goes to their account team</description>
+        <inputEntry id="IE_6_1"><text>"expansion"</text></inputEntry>
+        <inputEntry id="IE_6_2"><text>true</text></inputEntry>
+        <inputEntry id="IE_6_3"><text>-</text></inputEntry>
+        <inputEntry id="IE_6_4"><text>-</text></inputEntry>
+        <outputEntry id="OE_6_1"><text>"route"</text></outputEntry>
+        <outputEntry id="OE_6_2"><text>"Account Management"</text></outputEntry>
+        <outputEntry id="OE_6_3"><text>"cad-expansion"</text></outputEntry>
+        <outputEntry id="OE_6_4"><text>60</text></outputEntry>
+      </rule>
+      <rule id="Rule_EnterpriseUrgent">
+        <description>Urgent enterprise buying signal</description>
+        <inputEntry id="IE_7_1"><text>"demo_request","pricing","expansion"</text></inputEntry>
+        <inputEntry id="IE_7_2"><text>-</text></inputEntry>
+        <inputEntry id="IE_7_3"><text>"Enterprise"</text></inputEntry>
+        <inputEntry id="IE_7_4"><text>"high"</text></inputEntry>
+        <outputEntry id="OE_7_1"><text>"route"</text></outputEntry>
+        <outputEntry id="OE_7_2"><text>lead.region + " Enterprise"</text></outputEntry>
+        <outputEntry id="OE_7_3"><text>"cad-" + lower case(lead.region) + (if classification.intent = "pricing" then "-pricing" else "-demo")</text></outputEntry>
+        <outputEntry id="OE_7_4"><text>10</text></outputEntry>
+      </rule>
+      <rule id="Rule_Enterprise">
+        <description>Enterprise buying signal</description>
+        <inputEntry id="IE_8_1"><text>"demo_request","pricing","expansion"</text></inputEntry>
+        <inputEntry id="IE_8_2"><text>-</text></inputEntry>
+        <inputEntry id="IE_8_3"><text>"Enterprise"</text></inputEntry>
+        <inputEntry id="IE_8_4"><text>-</text></inputEntry>
+        <outputEntry id="OE_8_1"><text>"route"</text></outputEntry>
+        <outputEntry id="OE_8_2"><text>lead.region + " Enterprise"</text></outputEntry>
+        <outputEntry id="OE_8_3"><text>"cad-" + lower case(lead.region) + (if classification.intent = "pricing" then "-pricing" else "-demo")</text></outputEntry>
+        <outputEntry id="OE_8_4"><text>15</text></outputEntry>
+      </rule>
+      <rule id="Rule_MidMarket">
+        <description>Mid-market buying signal</description>
+        <inputEntry id="IE_9_1"><text>"demo_request","pricing","expansion"</text></inputEntry>
+        <inputEntry id="IE_9_2"><text>-</text></inputEntry>
+        <inputEntry id="IE_9_3"><text>"MidMarket"</text></inputEntry>
+        <inputEntry id="IE_9_4"><text>-</text></inputEntry>
+        <outputEntry id="OE_9_1"><text>"route"</text></outputEntry>
+        <outputEntry id="OE_9_2"><text>lead.region + " Commercial"</text></outputEntry>
+        <outputEntry id="OE_9_3"><text>"cad-" + lower case(lead.region) + (if classification.intent = "pricing" then "-pricing" else "-demo")</text></outputEntry>
+        <outputEntry id="OE_9_4"><text>30</text></outputEntry>
+      </rule>
+      <rule id="Rule_Smb">
+        <description>Small companies start with a trial in the digital sales motion</description>
+        <inputEntry id="IE_10_1"><text>"demo_request","pricing","expansion"</text></inputEntry>
+        <inputEntry id="IE_10_2"><text>-</text></inputEntry>
+        <inputEntry id="IE_10_3"><text>"SMB"</text></inputEntry>
+        <inputEntry id="IE_10_4"><text>-</text></inputEntry>
+        <outputEntry id="OE_10_1"><text>"nurture"</text></outputEntry>
+        <outputEntry id="OE_10_2"><text>"Digital Sales"</text></outputEntry>
+        <outputEntry id="OE_10_3"><text>"cad-digital-trial"</text></outputEntry>
+        <outputEntry id="OE_10_4"><text>60</text></outputEntry>
+      </rule>
+      <rule id="Rule_Review">
+        <description>Anything else needs a person</description>
+        <inputEntry id="IE_11_1"><text>-</text></inputEntry>
+        <inputEntry id="IE_11_2"><text>-</text></inputEntry>
+        <inputEntry id="IE_11_3"><text>-</text></inputEntry>
+        <inputEntry id="IE_11_4"><text>-</text></inputEntry>
+        <outputEntry id="OE_11_1"><text>"review"</text></outputEntry>
+        <outputEntry id="OE_11_2"><text>"Lead Review"</text></outputEntry>
+        <outputEntry id="OE_11_3"><text>null</text></outputEntry>
+        <outputEntry id="OE_11_4"><text>60</text></outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

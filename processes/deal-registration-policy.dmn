@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_DealRegistrationPolicy" name="Deal registration policy" namespace="https://revops.example/decisions" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+  <decision id="deal-registration-policy" name="Deal registration policy">
+    <decisionTable id="DealRegistrationTable" hitPolicy="FIRST">
+      <input id="In_Conflict" label="Conflict">
+        <inputExpression id="InExpr_Conflict" typeRef="string">
+          <text>conflict.kind</text>
+        </inputExpression>
+      </input>
+      <input id="In_LateStage" label="Direct deal in late stage">
+        <inputExpression id="InExpr_LateStage" typeRef="boolean">
+          <text>conflict.lateStage</text>
+        </inputExpression>
+      </input>
+      <input id="In_WithinLimit" label="Within the auto-approval limit">
+        <inputExpression id="InExpr_WithinLimit" typeRef="boolean">
+          <text>registration.amount &lt;= policy.autoApproveMaxAmount</text>
+        </inputExpression>
+      </input>
+      <output id="Out_Decision" label="Who decides" name="decision" typeRef="string" />
+      <output id="Out_Suggestion" label="Suggested outcome" name="suggestion" typeRef="string" />
+      <output id="Out_Reason" label="Reason code" name="reasonCode" typeRef="string" />
+      <rule id="Rule_DirectLate">
+        <description>Our own team is in proposal or negotiation with this company</description>
+        <inputEntry id="IE_1_1"><text>"direct_open_opportunity"</text></inputEntry>
+        <inputEntry id="IE_1_2"><text>true</text></inputEntry>
+        <inputEntry id="IE_1_3"><text>-</text></inputEntry>
+        <outputEntry id="OE_1_1"><text>"review"</text></outputEntry>
+        <outputEntry id="OE_1_2"><text>"reject"</text></outputEntry>
+        <outputEntry id="OE_1_3"><text>"DIRECT_LATE_STAGE"</text></outputEntry>
+      </rule>
+      <rule id="Rule_Direct">
+        <description>Our own team has an open opportunity with this company</description>
+        <inputEntry id="IE_2_1"><text>"direct_open_opportunity"</text></inputEntry>
+        <inputEntry id="IE_2_2"><text>-</text></inputEntry>
+        <inputEntry id="IE_2_3"><text>-</text></inputEntry>
+        <outputEntry id="OE_2_1"><text>"review"</text></outputEntry>
+        <outputEntry id="OE_2_2"><text>"reject"</text></outputEntry>
+        <outputEntry id="OE_2_3"><text>"DIRECT_CONFLICT"</text></outputEntry>
+      </rule>
+      <rule id="Rule_OtherPartner">
+        <description>Another partner already holds an approved registration</description>
+        <inputEntry id="IE_3_1"><text>"other_partner"</text></inputEntry>
+        <inputEntry id="IE_3_2"><text>-</text></inputEntry>
+        <inputEntry id="IE_3_3"><text>-</text></inputEntry>
+        <outputEntry id="OE_3_1"><text>"review"</text></outputEntry>
+        <outputEntry id="OE_3_2"><text>"reject"</text></outputEntry>
+        <outputEntry id="OE_3_3"><text>"PARTNER_CONFLICT"</text></outputEntry>
+      </rule>
+      <rule id="Rule_Clean">
+        <description>No conflict and below the limit</description>
+        <inputEntry id="IE_4_1"><text>"none"</text></inputEntry>
+        <inputEntry id="IE_4_2"><text>-</text></inputEntry>
+        <inputEntry id="IE_4_3"><text>true</text></inputEntry>
+        <outputEntry id="OE_4_1"><text>"approve"</text></outputEntry>
+        <outputEntry id="OE_4_2"><text>"approve"</text></outputEntry>
+        <outputEntry id="OE_4_3"><text>"CLEAN"</text></outputEntry>
+      </rule>
+      <rule id="Rule_Large">
+        <description>No conflict, but above the limit</description>
+        <inputEntry id="IE_5_1"><text>"none"</text></inputEntry>
+        <inputEntry id="IE_5_2"><text>-</text></inputEntry>
+        <inputEntry id="IE_5_3"><text>-</text></inputEntry>
+        <outputEntry id="OE_5_1"><text>"review"</text></outputEntry>
+        <outputEntry id="OE_5_2"><text>"approve"</text></outputEntry>
+        <outputEntry id="OE_5_3"><text>"ABOVE_AUTO_LIMIT"</text></outputEntry>
+      </rule>
+      <rule id="Rule_Unknown">
+        <description>Anything else goes to the deal desk</description>
+        <inputEntry id="IE_6_1"><text>-</text></inputEntry>
+        <inputEntry id="IE_6_2"><text>-</text></inputEntry>
+        <inputEntry id="IE_6_3"><text>-</text></inputEntry>
+        <outputEntry id="OE_6_1"><text>"review"</text></outputEntry>
+        <outputEntry id="OE_6_2"><text>"approve"</text></outputEntry>
+        <outputEntry id="OE_6_3"><text>"UNKNOWN"</text></outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>
