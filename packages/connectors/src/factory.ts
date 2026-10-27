@@ -26,7 +26,7 @@ export interface ConnectorConfig {
 }
 
 /** Builds every client from config/connectors.yaml (with environment overrides). */
-export function buildConnectors(overrides: { baseUrl?: string; sleep?: Sleep } = {}): Connectors {
+export function buildConnectors(overrides: { baseUrl?: string; sleep?: Sleep; now?: () => number } = {}): Connectors {
   const cfg = structuredClone(loadConfig<ConnectorConfig>("connectors"));
   if (overrides.baseUrl) {
     const b = overrides.baseUrl;
@@ -39,7 +39,7 @@ export function buildConnectors(overrides: { baseUrl?: string; sleep?: Sleep } =
     cfg.bigquery.api_endpoint = b;
   }
   const s = cfg.salesforce;
-  return {
+  const c: Connectors = {
     cfg,
     salesforce: new SalesforceClient(
       {
@@ -60,4 +60,6 @@ export function buildConnectors(overrides: { baseUrl?: string; sleep?: Sleep } =
     slack: new SlackClient(cfg.slack.base_url, cfg.slack.bot_token),
     warehouse: new Warehouse(cfg.bigquery.project, cfg.bigquery.api_endpoint || undefined),
   };
+  if (overrides.now) for (const b of [c.salesforce.breaker, c.gainsight.breaker, c.salesloft.breaker]) b.now = overrides.now;
+  return c;
 }

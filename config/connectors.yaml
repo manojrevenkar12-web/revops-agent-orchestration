@@ -28,8 +28,17 @@ slack:
   signing_secret: ${SLACK_SIGNING_SECRET:-slack-sandbox-signing-secret}
   channels:
     lead: "#adr-inbound"
+    lead_escalation: "#adr-managers"
     renewal: "#cs-renewals"
+    renewal_escalation: "#cs-leadership"
     deal_registration: "#partner-deal-desk"
+    deal_registration_escalation: "#partnerships-leadership"
+    ops: "#revops-automation"
+  teams:                       # where a request that is not a sales lead goes (DMN routing.queue -> channel)
+    Customer Support: "#support-intake"
+    Community: "#community-questions"
+    Partner Team: "#partner-requests"
+    Talent: "#talent-inbox"
 bigquery:
   project: ${GCP_PROJECT:-revops-sandbox}
   api_endpoint: ${BIGQUERY_API_ENDPOINT:-http://127.0.0.1:9300}

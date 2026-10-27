@@ -23,6 +23,10 @@ tools:
   account_360: { scope: gtm:read }
   open_opportunities: { scope: gtm:read }
   partner_registrations: { scope: gtm:read }
+  sales_team: { scope: gtm:read }
+  deal_registration: { scope: gtm:read }
+  renewals_due: { scope: gtm:read }
+  registrations_pending: { scope: gtm:read }
   playbook_search: { scope: gtm:read }
   crm_upsert_lead: { scope: gtm:write, approval: required }
   crm_create_task: { scope: gtm:write, approval: required }

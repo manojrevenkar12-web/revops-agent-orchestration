@@ -54,13 +54,24 @@ export const TOOLS: ToolDef[] = [
   {
     name: "account_lookup",
     title: "Find a Salesforce account",
-    description: "Find accounts by web domain (preferred) or name. Use before any other account tool when you only have a company name or an e-mail address.",
+    description: "Find accounts by web domain (preferred), name or Account Id. Use before any other account tool when you only have a company name or an e-mail address.",
     scope: "gtm:read",
     write: false,
-    input: { domain: z.string().max(120).optional(), name: z.string().max(120).optional() },
+    input: {
+      domain: z.string().max(120).optional(),
+      name: z.string().max(120).optional(),
+      account_id: z
+        .string()
+        .regex(/^001[A-Za-z0-9]{12,15}$/)
+        .optional(),
+    },
     async run(a, ctx) {
-      if (!a.domain && !a.name) throw new UpstreamError("mcp", 400, "INVALID_ARGUMENT", "give a domain or a name", false);
-      const where = a.domain ? `Website LIKE ${soqlQuote(`%${a.domain.replace(/^www\./, "").replace(/[%_]/g, "")}%`)}` : `Name LIKE ${soqlQuote(`%${(a.name ?? "").replace(/[%_]/g, "")}%`)}`;
+      if (!a.domain && !a.name && !a.account_id) throw new UpstreamError("mcp", 400, "INVALID_ARGUMENT", "give a domain, a name or an account id", false);
+      const where = a.account_id
+        ? `Id = ${soqlQuote(a.account_id)}`
+        : a.domain
+          ? `Website LIKE ${soqlQuote(`%${a.domain.replace(/^www\./, "").replace(/[%_]/g, "")}%`)}`
+          : `Name LIKE ${soqlQuote(`%${(a.name ?? "").replace(/[%_]/g, "")}%`)}`;
       const rows = await ctx.c.salesforce.query<Rec>(
         `SELECT Id, Name, Website, Type, Segment__c, Region__c, NumberOfEmployees, OwnerId, Owner.Name, Owner.IsActive, CSM__c FROM Account WHERE ${where} LIMIT ${ctx.maxRows}`,
         { priority: "interactive" },
@@ -214,6 +225,97 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "sales_team",
+    title: "Active members of the revenue team",
+    description: "Active users by role (AE, CSM, ADR, PartnerManager, SalesOps, managers), region and segment, with their Slack ids. Use to find an owner.",
+    scope: "gtm:read",
+    write: false,
+    input: { role: z.string().max(40).optional(), region: z.enum(["EMEA", "NA", "APAC"]).optional() },
+    async run(a, ctx, caller) {
+      const where = ["IsActive = true", a.role ? `Role = ${soqlQuote(a.role)}` : "", a.region ? `Region = ${soqlQuote(a.region)}` : ""].filter(Boolean).join(" AND ");
+      const rows = await ctx.c.salesforce.query<Rec>(`SELECT Id, Name, Email, Role, Region, Segment__c, SlackUserId FROM User WHERE ${where} ORDER BY Name LIMIT ${ctx.maxRows}`, {
+        priority: "interactive",
+      });
+      const users = rows.map((u) => ({ id: u.Id, name: u.Name, email: mask(String(u.Email), caller), role: u.Role, region: u.Region, segment: u.Segment__c, slackUserId: u.SlackUserId }));
+      return { summary: `${users.length} people`, data: { users } };
+    },
+  },
+  {
+    name: "deal_registration",
+    title: "One partner deal registration",
+    description: "A deal registration from Impartner by its id (DR-...).",
+    scope: "gtm:read",
+    write: false,
+    input: { registration_id: z.string().regex(/^DR-\d+$/) },
+    async run(a, ctx) {
+      const r = await ctx.c.impartner.get(a.registration_id);
+      const registration = {
+        id: r.Id,
+        partnerId: r.PartnerId,
+        companyName: r.CompanyName,
+        domain: r.CompanyDomain,
+        amount: r.EstimatedAmount,
+        expectedCloseDate: r.ExpectedCloseDate,
+        product: r.Product,
+        status: r.Status,
+        submittedAt: r.SubmittedAt,
+        notes: r.Notes,
+      };
+      return { summary: `${r.Id}: ${r.CompanyName} (${r.Status})`, data: { registration } };
+    },
+  },
+  {
+    name: "renewals_due",
+    title: "Open renewals closing soon",
+    description: "Open renewal opportunities closing within a number of days, or one renewal by opportunity id.",
+    scope: "gtm:read",
+    write: false,
+    input: {
+      within_days: z.number().int().min(1).max(365).optional(),
+      opportunity_id: z
+        .string()
+        .regex(/^006[A-Za-z0-9]{12,15}$/)
+        .optional(),
+    },
+    async run(a, ctx) {
+      const where = a.opportunity_id ? `Id = ${soqlQuote(a.opportunity_id)}` : `CloseDate = NEXT_N_DAYS:${a.within_days ?? 120}`;
+      const rows = await ctx.c.salesforce.query<Rec>(
+        `SELECT Id, AccountId, Account.Name, CloseDate, Amount, StageName FROM Opportunity WHERE Type = 'Renewal' AND IsClosed = false AND ${where} ORDER BY CloseDate LIMIT 500`,
+        {
+          priority: "background",
+        },
+      );
+      const renewals = rows.map((o) => ({
+        opportunityId: o.Id,
+        accountId: o.AccountId,
+        accountName: (o.Account as Rec | null)?.Name ?? null,
+        closeDate: o.CloseDate,
+        amount: o.Amount,
+        stage: o.StageName,
+      }));
+      return { summary: `${renewals.length} renewals`, data: { renewals } };
+    },
+  },
+  {
+    name: "registrations_pending",
+    title: "Pending deal registrations",
+    description: "Deal registrations in Impartner that are waiting for a decision.",
+    scope: "gtm:read",
+    write: false,
+    input: {},
+    async run(_a, ctx) {
+      const registrations = (await ctx.c.impartner.pending()).map((r) => ({
+        id: r.Id,
+        partnerId: r.PartnerId,
+        companyName: r.CompanyName,
+        domain: r.CompanyDomain,
+        amount: r.EstimatedAmount,
+        submittedAt: r.SubmittedAt,
+      }));
+      return { summary: `${registrations.length} pending`, data: { registrations } };
+    },
+  },
+  {
     name: "playbook_search",
     title: "Search the GTM playbooks",
     description: "Search the company's sales, customer-success and partner playbooks. Cite passage ids when you rely on them.",
@@ -271,12 +373,19 @@ export const TOOLS: ToolDef[] = [
   {
     name: "crm_create_task",
     title: "Create a Salesforce task",
-    description: "Create a follow-up task (idempotent by external key).",
+    description: "Create a follow-up task (idempotent by external key) on an account or opportunity (what_id), or on the lead created from a HubSpot submission (lead_submission_id).",
     scope: "gtm:write",
     write: true,
     input: {
       external_key: z.string().min(6).max(120),
-      what_id: z.string().regex(/^(001|006|00Q)[A-Za-z0-9]{12,15}$/),
+      what_id: z
+        .string()
+        .regex(/^(001|006)[A-Za-z0-9]{12,15}$/)
+        .optional(),
+      lead_submission_id: z
+        .string()
+        .regex(/^hs-\d+$/)
+        .optional(),
       owner_id: z.string().regex(/^005[A-Za-z0-9]{12,15}$/),
       subject: z.string().max(255),
       description: z.string().max(4000),
@@ -284,8 +393,16 @@ export const TOOLS: ToolDef[] = [
       approval_token: z.string().optional(),
     },
     async run(a, ctx) {
+      if (!a.what_id === !a.lead_submission_id) throw new UpstreamError("mcp", 400, "INVALID_ARGUMENT", "give exactly one of what_id and lead_submission_id", false);
+      let whoId: string | null = null;
+      if (a.lead_submission_id) {
+        const [lead] = await ctx.c.salesforce.query<Rec>(`SELECT Id FROM Lead WHERE HubSpot_Submission_Id__c = ${soqlQuote(a.lead_submission_id)}`, { priority: "interactive" });
+        if (!lead) throw new UpstreamError("mcp", 404, "NOT_FOUND", `no lead for submission ${a.lead_submission_id}`, false);
+        whoId = lead.Id;
+      }
       const r = await ctx.c.salesforce.upsert("Task", "External_Key__c", a.external_key, {
-        WhatId: a.what_id,
+        WhatId: a.what_id ?? null,
+        WhoId: whoId,
         OwnerId: a.owner_id,
         Subject: a.subject,
         Description: a.description,

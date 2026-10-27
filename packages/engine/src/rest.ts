@@ -383,6 +383,12 @@ export function registerEngineRest(app: FastifyInstance, engine: Engine): void {
     return reply.code(204).send();
   });
 
+  app.get<{ Params: { key: string } }>("/v2/process-definitions/:key/xml", async (req, reply) => {
+    const p = engine.processes.get(req.params.key);
+    if (!p) throw new EngineError("NOT_FOUND", `no process definition ${req.params.key}`);
+    return reply.type("text/xml").send(p.xml);
+  });
+
   // Local-only: the record stream for the console's instance history.
   app.get<{ Querystring: { processInstanceKey?: string; after?: string; limit?: string } }>("/local/records", async (req) => {
     const after = Number(req.query.after ?? 0);

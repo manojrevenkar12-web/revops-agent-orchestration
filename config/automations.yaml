@@ -1,28 +1,51 @@
 # The automations this layer runs, what they may do on their own, and what a person must approve.
-# Thresholds are calibrated probabilities (see evals/), not the model's self-reported confidence.
+# Probabilities are calibrated (see reports/agent/calibration.json), not the model's self-reported confidence.
+# mode: auto        the policy below decides when a person is needed
+#       review_all  every proposal waits for a person (use while investigating a problem; see docs/RUNBOOK.md)
+# Routing itself (queues, cadences, speed-to-lead targets) lives in processes/lead-routing.dmn, owned by Marketing Ops.
 
 inbound_lead_routing:
   process_id: inbound-lead-routing
+  message: hubspot.form.submitted
   owner_team: Marketing Ops / ADR
-  speed_to_lead_sla: PT15M            # ADR review deadline before escalation to the ADR manager
-  auto_route_min_probability: 0.90    # calibrated P(intent label is right) needed to route without a person
-  never_auto: [enterprise]            # segments that always get a person
+  mode: auto
+  auto_route_min_probability: 0.90    # calibrated P(intent is right) needed to route without a person
+  never_auto_segments: [Enterprise]   # segments that always get a person (lead-qualification playbook)
+  review_timeout: PT4H                # no ADR decision by then: the lead goes to the Lead Review queue
+  review_queue_owner_role: SalesOps
   minutes_saved_per_auto_route: 6     # baseline: manual triage time measured by the ADR team
-  cadences:
-    demo_request: { EMEA: cad-emea-demo, NA: cad-na-demo, APAC: cad-apac-demo }
-    pricing: { EMEA: cad-emea-pricing, NA: cad-na-pricing, APAC: cad-apac-pricing }
+  minutes_saved_per_assisted_route: 3 # a person decided, but on a prepared proposal
 
 renewal_risk:
   process_id: renewal-risk-save-play
+  message: renewal.signal
   owner_team: Customer Success
-  approval_deadline: PT24H            # CSM approval before escalation to the CS manager
+  mode: auto
   create_cta_min_probability: 0.80
-  renewal_window_days: 120
+  approval_deadline: PT24H            # CSM approval before escalation to the CS lead
+  agent_time_budget: PT10M            # the investigation is stopped after this
+  renewal_window_days: 120            # the weekly scan looks at renewals closing within this window
   minutes_saved_per_brief: 35
 
 partner_deal_registration:
   process_id: partner-deal-registration
+  message: impartner.registration.submitted
   owner_team: Partnerships
+  mode: auto
   decision_deadline: P2D              # partner programme promises a decision within two business days
   auto_approve_max_amount: 50000      # no conflict and below this: approve without a person
   minutes_saved_per_registration: 20
+
+territories:                          # country -> sales region, for leads without a matched account
+  EMEA: [Germany, United Kingdom, Netherlands, France, Switzerland, Sweden, Austria, Spain, Italy, Belgium, Denmark, Norway, Poland, Ireland]
+  NA: [United States, Canada, Mexico]
+  APAC: [Singapore, Australia, Japan, India, South Korea, New Zealand]
+
+segments:                             # HubSpot employee band -> segment, for leads without a matched account
+  "1-49": SMB
+  "50-499": SMB
+  "500-4999": MidMarket
+  "5000+": Enterprise
+
+approvals:
+  token_ttl: PT48H

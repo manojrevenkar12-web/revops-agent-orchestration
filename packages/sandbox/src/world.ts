@@ -533,6 +533,7 @@ export function generateWorld(seed = 7, asOf = "2026-10-26"): World {
 
   // ---- inbound form submissions -----------------------------------------------------------------------------------
   const forms: FormSubmission[] = [];
+  const accountNames = new Set(accounts.map((a) => a.Name));
   const customers = accounts.filter((a) => a.Type === "Customer");
   for (let i = 0; i < 320; i++) {
     const intent = rng.pick<Intent>(["demo_request", "demo_request", "demo_request", "pricing", "pricing", "support_issue", "partnership", "job_application", "spam", "expansion", "expansion"]);
@@ -540,7 +541,9 @@ export function generateWorld(seed = 7, asOf = "2026-10-26"): World {
     const existing = intent === "support_issue" || intent === "expansion" ? rng.pick(customers) : intent === "demo_request" && rng.chance(0.35) ? rng.pick(prospects) : null;
     const first = rng.pick(FIRST);
     const last = rng.pick(LAST);
-    const companyName = existing ? existing.Name : `${rng.pick(NAME_A)} ${rng.pick(NAME_B)}`;
+    let companyName = existing ? existing.Name : `${rng.pick(NAME_A)} ${rng.pick(NAME_B)}`;
+    // A new company never shares a name (and so a web domain) with an existing account: same domain, same company.
+    while (!existing && accountNames.has(companyName)) companyName = `${rng.pick(NAME_A)} ${rng.pick(NAME_B)}`;
     const domain = existing
       ? existing.Website.replace(/^www\./, "")
       : intent === "spam" || intent === "job_application" || rng.chance(0.08)

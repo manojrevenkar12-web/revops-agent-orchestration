@@ -5,6 +5,7 @@ uvicorn revops_agent.app:app --port 9500
 
 from __future__ import annotations
 
+import json
 import os
 import time
 
@@ -28,7 +29,8 @@ REQUESTS = Counter("agent_requests_total", "Agent service requests", ["task", "o
 LATENCY = Histogram("agent_request_seconds", "Agent service latency", ["task"])
 TOKENS = Counter("agent_tokens_total", "Model tokens", ["task", "direction"])
 
-service = build_service()
+# AGENT_FAULTS (evaluation only) makes the simulated provider misbehave, e.g. {"fabricate": 0.2}.
+service = build_service(json.loads(os.environ.get("AGENT_FAULTS") or "{}") or None)
 app = FastAPI(title="RevOps agent service", version=PROMPT_VERSION)
 
 

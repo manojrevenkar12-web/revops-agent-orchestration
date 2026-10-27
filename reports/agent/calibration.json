@@ -2,62 +2,50 @@
   "leadClassifier": {
     "accuracy": 1.0,
     "raw": {
-      "ece": 0.1177,
-      "brier": 0.0196,
+      "ece": 0.1116,
+      "brier": 0.0157,
       "n": 640,
       "bins": [
         {
-          "bin": "0.3-0.4",
-          "n": 1,
-          "meanPredicted": 0.38,
-          "observed": 1.0
-        },
-        {
           "bin": "0.5-0.6",
-          "n": 12,
-          "meanPredicted": 0.58,
+          "n": 1,
+          "meanPredicted": 0.589,
           "observed": 1.0
         },
         {
           "bin": "0.6-0.7",
-          "n": 16,
-          "meanPredicted": 0.655,
+          "n": 9,
+          "meanPredicted": 0.65,
           "observed": 1.0
         },
         {
           "bin": "0.7-0.8",
-          "n": 27,
-          "meanPredicted": 0.767,
+          "n": 33,
+          "meanPredicted": 0.739,
           "observed": 1.0
         },
         {
           "bin": "0.8-0.9",
-          "n": 254,
-          "meanPredicted": 0.863,
+          "n": 273,
+          "meanPredicted": 0.871,
           "observed": 1.0
         },
         {
           "bin": "0.9-1.0",
-          "n": 330,
-          "meanPredicted": 0.93,
+          "n": 324,
+          "meanPredicted": 0.926,
           "observed": 1.0
         }
       ]
     },
     "calibrated": {
-      "ece": 0.0025,
-      "brier": 0.0006,
+      "ece": 0.0016,
+      "brier": 0.0,
       "n": 640,
       "bins": [
         {
-          "bin": "0.3-0.4",
-          "n": 1,
-          "meanPredicted": 0.38,
-          "observed": 1.0
-        },
-        {
           "bin": "0.9-1.0",
-          "n": 639,
+          "n": 640,
           "meanPredicted": 0.998,
           "observed": 1.0
         }

@@ -29,7 +29,9 @@ for (const seed of SEEDS) {
   const { ctx } = buildToolContext({ connectors: buildConnectors({ baseUrl: sb.url, sleep: async () => undefined }), audit: new AuditLog(), clock: sb.clock });
   for (const f of sb.world.forms) {
     const t = sb.world.truth.forms[f.submissionId];
-    leads.push(JSON.stringify({ seed, submissionId: f.submissionId, message: f.message, company: f.company, jobtitle: f.jobtitle, email: f.email, employees: f.employees, country: f.country, label: t }));
+    leads.push(
+      JSON.stringify({ seed, submissionId: f.submissionId, message: f.message, company: f.company, jobtitle: f.jobtitle, email: f.email, employees: f.employees, country: f.country, label: t }),
+    );
   }
   for (const [oppId, t] of Object.entries(sb.world.truth.renewals)) {
     const opp = sb.world.opportunities.find((o) => o.Id === oppId);

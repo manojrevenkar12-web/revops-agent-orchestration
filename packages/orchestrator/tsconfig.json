@@ -19,6 +19,9 @@
     },
     {
       "path": "../mcp-server"
+    },
+    {
+      "path": "../sandbox"
     }
   ]
 }

@@ -34,7 +34,7 @@ export class CircuitBreaker {
     readonly name: string,
     private readonly threshold = 5,
     private readonly coolDownMs = 30_000,
-    private readonly now: () => number = Date.now,
+    public now: () => number = Date.now,
   ) {}
   get state(): "closed" | "open" | "half-open" {
     if (this.failures < this.threshold) return "closed";
@@ -79,7 +79,8 @@ export async function withRetry<T>(
     } catch (e) {
       last = e;
       const err = e instanceof UpstreamError ? e : new UpstreamError(system, 0, "NETWORK", String((e as Error).message ?? e), true);
-      if (err.retryable) opts.breaker?.failure();
+      // A rate limit is the upstream working as designed, not an outage: back off, but do not open the breaker.
+      if (err.retryable && err.status !== 429) opts.breaker?.failure();
       if (!err.retryable || attempt === policy.attempts) {
         opts.onCall?.({ system, status: err.status, ms: Date.now() - t0, attempts: attempt });
         throw err;

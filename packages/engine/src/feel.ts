@@ -23,17 +23,23 @@ export interface FeelEnv {
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
+/** feelin reads parameter names from a function's source, which bundlers rewrite; name them explicitly. */
+function named<F extends (...a: never[]) => unknown>(args: string[], fn: F): F {
+  (fn as unknown as { $args: string[] }).$args = args;
+  return fn;
+}
+
 function extensions(env: FeelEnv): Record<string, unknown> {
   return {
-    "is defined": (value: unknown) => value !== null && value !== undefined,
-    "get or else": (value: unknown, otherwise: unknown) => (value === null || value === undefined ? otherwise : value),
+    "is defined": named(["value"], (value: unknown) => value !== null && value !== undefined),
+    "get or else": named(["value", "default"], (value: unknown, otherwise: unknown) => (value === null || value === undefined ? otherwise : value)),
     // In the engine, fromAi just reads the value the agent supplied; the parameter list is derived from the model.
-    fromAi: (value: unknown, _description?: unknown, _type?: unknown, _schema?: unknown) => value ?? null,
-    now: () => env.now().toISOString(),
-    today: () => {
+    fromAi: named(["value", "description", "type", "schema"], (value: unknown) => value ?? null),
+    now: named([], () => env.now().toISOString()),
+    today: named([], () => {
       const d = env.now();
       return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
-    },
+    }),
   };
 }
 
