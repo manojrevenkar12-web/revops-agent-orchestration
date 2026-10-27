@@ -4,12 +4,12 @@ import type { ReactNode } from "react";
 /** Grey shapes in the layout of what is loading, so the page does not jump when data arrives. */
 export function Skeleton({ rows = 3, height = 20, label = "Loading" }: { rows?: number; height?: number; label?: string }) {
   return (
-    <div className="skeleton" role="status" aria-live="polite" aria-label={label}>
+    <output className="skeleton" aria-live="polite" aria-label={label}>
       {Array.from({ length: rows }, (_, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: static placeholder rows
         <span key={i} className="skeleton-row" style={{ height, width: `${92 - ((i * 17) % 40)}%` }} />
       ))}
-    </div>
+    </output>
   );
 }
 

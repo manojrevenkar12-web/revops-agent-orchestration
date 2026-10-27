@@ -49,7 +49,12 @@ afterEach(() => {
 describe("overview", () => {
   it("shows a skeleton, then each automation as a lane split by who decided", async () => {
     let release: (r: Response) => void = () => undefined;
-    serve({ "/api/overview": () => new Promise<Response>((r) => (release = r)) });
+    serve({
+      "/api/overview": () =>
+        new Promise<Response>((r) => {
+          release = r;
+        }),
+    });
     at("/");
     render(<App client={client()} />);
     expect(screen.getByRole("status", { name: "Loading the overview" })).toBeInTheDocument();

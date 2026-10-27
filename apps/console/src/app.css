@@ -278,6 +278,7 @@ h3 {
 }
 
 .skeleton {
+  width: 100%;
   display: grid;
   gap: var(--space-3);
 }
