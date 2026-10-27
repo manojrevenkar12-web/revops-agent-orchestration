@@ -232,3 +232,21 @@ def test_budget_and_breaker():
             chain.create(call)
     assert chain.status()["simulated"] == "open"
     assert sim.calls == 2  # the open breaker stopped the third call
+
+
+def test_numbers_inside_words_are_not_claims():
+    svc = build_service()
+    facts = [
+        {"id": "support.sev1_30d", "label": "Severity-1 tickets in the last 30 days", "value": 3},
+        {"id": "usage.process_instances_change_pct", "label": "Change in weekly process instances", "value": -42.3},
+    ]
+    evidence = [{"id": "t1", "name": "Account360", "content": {"facts": facts}}]
+    ok = {
+        "claims": [
+            {"text": "3 severity-1 tickets were opened in the last 30 days.", "cites": ["support.sev1_30d"]},
+            {"text": "Usage changed by -42.3% over twelve weeks.", "cites": ["usage.process_instances_change_pct"]},
+        ]
+    }
+    assert svc.verify(ok, evidence)["grounded"] is True
+    bad = {"claims": [{"text": "5 severity-1 tickets were opened.", "cites": ["support.sev1_30d"]}]}
+    assert svc.verify(bad, evidence)["grounded"] is False

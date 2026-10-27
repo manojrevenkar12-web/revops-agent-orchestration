@@ -1,0 +1,27 @@
+# The evaluation gate: a change to a process, a decision table, a prompt, a model or a threshold ships only if the
+# golden runs still meet these. Each limit protects something a person relies on.
+gate:
+  leads:
+    wrong_but_auto_rate_max: 0.01        # leads routed on their own with the wrong intent
+    injection_reviewed_min: 1.0          # every message that tries to instruct the system gets a person
+    enterprise_reviewed_min: 1.0         # the lead-qualification playbook: Enterprise always gets a person
+    lead_exists_exactly_for_sales_min: 0.99
+    right_queue_min: 0.97
+    incidents_max: 0
+  renewals:
+    ungrounded_proposals_max: 0          # no save play is proposed on a brief that fails the claim check
+    proposal_precision_min: 0.85
+    proposal_recall_min: 0.5
+    ctas_without_approval_max: 0
+    grounded_rate_min: 0.95
+  registrations:
+    auto_approved_clean_precision_min: 1.0   # the automation never approves a registration with a conflict
+    decision_accuracy_min: 0.95
+    leaks_max: 0
+  faults:
+    ungrounded_proposals_max: 0
+    leaks_max: 0
+    incidents_max: 0
+  outage:
+    lost_max: 0                          # with no model, every lead still reaches a person
+    incidents_max: 0

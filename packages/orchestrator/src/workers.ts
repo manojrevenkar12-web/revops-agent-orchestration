@@ -435,13 +435,15 @@ export function handlers(d: WorkerDeps): Record<string, (job: JobView) => Promis
       const id = String(job.variables.registrationId);
       const { registration } = await d.mcp.call<{ registration: Json }>("deal_registration", { registration_id: id });
       const domain = String(registration.domain).toLowerCase();
-      const acc = (await d.mcp.call<{ accounts: Json[] }>("account_lookup", { domain })).accounts.find(
+      // Duplicate accounts can share a domain: check every account the domain belongs to.
+      const accounts = (await d.mcp.call<{ accounts: Json[] }>("account_lookup", { domain })).accounts.filter(
         (a) =>
           String(a.website ?? "")
             .replace(/^www\./, "")
             .toLowerCase() === domain,
       );
-      const opps = acc ? (await d.mcp.call<{ opportunities: Json[] }>("open_opportunities", { account_id: acc.id })).opportunities : [];
+      const acc = accounts[0];
+      const opps = (await Promise.all(accounts.map(async (a) => (await d.mcp.call<{ opportunities: Json[] }>("open_opportunities", { account_id: a.id })).opportunities))).flat();
       const direct = opps.filter((o) => o.type === "New Business" && !o.partnerAccountId);
       const regs = (await d.mcp.call<{ registrations: Json[] }>("partner_registrations", { domain })).registrations;
       const other = regs.filter((r) => r.id !== id && r.status === "Approved" && r.partnerId !== registration.partnerId);
@@ -452,6 +454,7 @@ export function handlers(d: WorkerDeps): Record<string, (job: JobView) => Promis
         kind,
         lateStage: direct.some((o) => ["Proposal", "Negotiation"].includes(String(o.stage))),
         accountId: acc?.id ?? null,
+        duplicateAccounts: accounts.length > 1 ? accounts.map((a) => a.id) : [],
         opportunityIds: direct.map((o) => o.id),
         conflictingRegistrationIds: other.map((r) => r.id),
       };

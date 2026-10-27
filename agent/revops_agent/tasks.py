@@ -322,12 +322,14 @@ class AgentService:
 
     def verify(self, brief: dict[str, Any] | None, evidence: list[dict[str, Any]]) -> dict[str, Any]:
         facts: dict[str, Any] = {}
+        labels: dict[str, str] = {}
         passages: set[str] = set()
         for e in evidence:
             c = e.get("content") or {}
             if isinstance(c, dict):
                 for f in c.get("facts", []):
                     facts[f["id"]] = f.get("value")
+                    labels[f["id"]] = str(f.get("label", ""))
                 for p in c.get("passages", []):
                     passages.add(p["id"])
         fact_list = [{"id": k, "value": v} for k, v in facts.items()]
@@ -347,15 +349,15 @@ class AgentService:
             if missing:
                 unsupported.append({"claim": c.get("text"), "reason": f"cites what was not read: {', '.join(missing)}"})
                 continue
-            nums = [float(n) for n in re.findall(r"[-+]?\d+(?:\.\d+)?", c.get("text", "").replace(",", ""))]
+            # Numbers standing on their own: not the 1 in "severity-1".
+            nums = [float(n) for n in NUMBER.findall(c.get("text", "").replace(",", ""))]
             cited_vals = [facts[x] for x in cites if x in facts and isinstance(facts[x], int | float) and not isinstance(facts[x], bool)]
+            # A number may also come from the fact's definition ("in the last 30 days").
+            defined = [float(n) for x in cites for n in NUMBER.findall(labels.get(x, ""))]
             for n in nums:
-                if cited_vals and not any(_close(n, v, tol) for v in cited_vals):
+                if cited_vals and not any(_close(n, v, tol) for v in cited_vals) and n not in defined:
                     unsupported.append(
-                        {
-                            "claim": c.get("text"),
-                            "reason": f"{n:g} does not match the cited fact ({', '.join(str(v) for v in cited_vals)})",
-                        }
+                        {"claim": c.get("text"), "reason": f"{n:g} does not match the cited fact ({', '.join(str(v) for v in cited_vals)})"}
                     )
                     break
         grounded = brief is not None and not unsupported and bool((brief or {}).get("claims"))
@@ -397,6 +399,9 @@ class AgentService:
             "withheld": bool(leaks),
             "usage": stats.usage().model_dump(),
         }
+
+
+NUMBER = re.compile(r"(?<![\w.-])[-+]?\d+(?:\.\d+)?")
 
 
 def _close(a: float, b: float, tol: float) -> bool:

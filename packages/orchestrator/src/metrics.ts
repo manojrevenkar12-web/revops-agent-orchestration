@@ -63,11 +63,16 @@ export async function computeMetrics(d: { audit: AuditLog; approvals: ApprovalSt
   const regIssued = issued.filter((e) => String(e.detail.elementId) === "IssueDealApproval");
 
   // models
-  const calls = all.filter((e) => e.action === "model.call" || e.action === "agent.turn");
-  const usage = calls.map((e) => (e.detail.usage ?? e.detail.stats ?? {}) as { inputTokens?: number; outputTokens?: number; latencyMs?: number; costUsd?: number | null; repairs?: number });
-  const costs = usage.map((u) => u.costUsd);
+  // Single calls are logged once; an investigation logs cumulative totals on every turn, so take its last turn.
+  const single = all.filter((e) => e.action === "model.call");
+  const lastTurn = new Map<string, AuditEntry>();
+  for (const e of all) if (e.action === "agent.turn") lastTurn.set(e.subject, e);
+  const turns = all.filter((e) => e.action === "agent.turn");
+  const calls = [...single, ...turns];
+  type U = { inputTokens?: number; outputTokens?: number; latencyMs?: number; costUsd?: number | null; repairs?: number; provider?: string; modelCalls?: number };
+  const usage: U[] = [...single.map((e) => (e.detail.usage ?? {}) as U), ...[...lastTurn.values()].map((e) => (e.detail.stats ?? {}) as U)];
+  const costs = usage.map((u) => (typeof u.costUsd === "number" ? u.costUsd : u.provider === "simulated" ? 0 : null));
   const costKnown = costs.every((c) => typeof c === "number");
-
   const minutesSaved =
     auto.length * cfg.inbound_lead_routing.minutes_saved_per_auto_route +
     person.length * cfg.inbound_lead_routing.minutes_saved_per_assisted_route +
@@ -117,7 +122,7 @@ export async function computeMetrics(d: { audit: AuditLog; approvals: ApprovalSt
     },
     hoursSaved: Math.round((minutesSaved / 60) * 10) / 10,
     models: {
-      calls: calls.length,
+      calls: single.length + usage.slice(single.length).reduce((n, u) => n + (u.modelCalls ?? 1), 0),
       inputTokens: usage.reduce((s, u) => s + (u.inputTokens ?? 0), 0),
       outputTokens: usage.reduce((s, u) => s + (u.outputTokens ?? 0), 0),
       costUsd: costKnown ? Math.round(costs.reduce<number>((s, c) => s + (c ?? 0), 0) * 10000) / 10000 : null,

@@ -1,0 +1,142 @@
+{
+  "generatedAt": "2026-10-27T15:51:15.002Z",
+  "golden": {
+    "leads": {
+      "beforePeople": {
+        "submissions": 320,
+        "intentAccuracy": 1,
+        "autoShare": 0.806,
+        "autoRouted": 258,
+        "wrongButAuto": 0,
+        "wrongButAutoRate": 0,
+        "injectionReviewed": 1,
+        "enterpriseReviewed": 1,
+        "confidenceEce": 0.001,
+        "wrongButAutoExamples": []
+      },
+      "outcome": {
+        "completed": 320,
+        "leadExistsExactlyForSalesRequests": 1,
+        "salesLeadsInTheRightQueue": 1,
+        "personDecisions": 62,
+        "overrides": 0,
+        "incidents": 0
+      },
+      "seconds": 14
+    },
+    "renewals": {
+      "investigated": 24,
+      "atRiskInvestigated": 9,
+      "groundedRate": 1,
+      "proposals": 7,
+      "proposalPrecision": 1,
+      "proposalRecall": 0.778,
+      "ungroundedProposals": 0,
+      "riskEce": 0.124,
+      "ctasCreated": 7,
+      "ctasWithoutApproval": 0,
+      "seconds": 2
+    },
+    "registrations": {
+      "pending": 50,
+      "autoApproved": 23,
+      "autoApprovedCleanPrecision": 1,
+      "decided": 50,
+      "decisionAccuracy": 1,
+      "leaks": 0,
+      "incidents": 0,
+      "seconds": 2
+    },
+    "salesforceApiShareUsed": 0.014,
+    "auditIntact": true,
+    "overview": {
+      "generatedAt": "2026-10-26T09:11:00.000Z",
+      "processes": [
+        {
+          "id": "inbound-lead-routing",
+          "active": 0,
+          "completed": 320,
+          "incidents": 0
+        },
+        {
+          "id": "renewal-risk-save-play",
+          "active": 0,
+          "completed": 24,
+          "incidents": 0
+        },
+        {
+          "id": "partner-deal-registration",
+          "active": 0,
+          "completed": 50,
+          "incidents": 0
+        }
+      ],
+      "leads": {
+        "received": 320,
+        "autoRouted": 175,
+        "personDecided": 62,
+        "overrides": 0,
+        "overrideRate": 0,
+        "speedToLeadMinutes": {
+          "p50": 0,
+          "p90": 0
+        }
+      },
+      "renewals": {
+        "investigated": 24,
+        "grounded": 24,
+        "ungrounded": 0,
+        "proposed": 7,
+        "approved": 7,
+        "declined": 0
+      },
+      "registrations": {
+        "autoApproved": 23,
+        "reviewed": 27
+      },
+      "approvals": {
+        "open": 0,
+        "decided": 96,
+        "overrideRate": 0,
+        "medianMinutesToDecision": 4
+      },
+      "hoursSaved": 41.4,
+      "models": {
+        "calls": 451,
+        "inputTokens": 250635,
+        "outputTokens": 35533,
+        "costUsd": null,
+        "costKnown": false,
+        "repairs": 0,
+        "latencyMs": {
+          "p50": 0,
+          "p95": 0
+        },
+        "unavailable": 0
+      },
+      "incidents": 0
+    }
+  },
+  "faults": {
+    "leadIncidents": 0,
+    "renewals": {
+      "ungrounded": 6,
+      "ungroundedProposals": 0,
+      "proposals": 6,
+      "proposalPrecision": 1
+    },
+    "registrations": {
+      "leaks": 0,
+      "withheldDrafts": 10,
+      "incidents": 0
+    }
+  },
+  "outage": {
+    "submissions": 60,
+    "unclassified": 53,
+    "unclassifiedReviewed": 53,
+    "incidents": 0,
+    "lost": 0
+  },
+  "seconds": 31
+}

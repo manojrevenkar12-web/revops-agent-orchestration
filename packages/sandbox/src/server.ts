@@ -1,3 +1,4 @@
+import type { FormSubmission } from "./world";
 import { ManualClock } from "@revops/core";
 import Fastify, { type FastifyInstance } from "fastify";
 import { GtmSystems, type SandboxKeys, hubspotSignatureV3, registerGtm, slackSignature } from "./gtm";
@@ -62,8 +63,9 @@ export function buildSandbox(opts: { seed?: number; asOf?: string; keys?: typeof
 
   /** Deliver form submissions to a webhook URL the way HubSpot does: JSON body, v3 signature, millisecond timestamp. */
   app.post("/_sandbox/hubspot/deliver", async (req) => {
-    const b = req.body as { url: string; ids?: string[]; from?: number; count?: number; tamper?: boolean };
-    const forms = b.ids ? world.forms.filter((f) => b.ids?.includes(f.submissionId)) : world.forms.slice(b.from ?? 0, (b.from ?? 0) + (b.count ?? 1));
+    const b = req.body as { url: string; ids?: string[]; from?: number; count?: number; tamper?: boolean; submissions?: FormSubmission[] };
+    // `submissions` delivers forms that are not part of the world (held-out sets written by people).
+    const forms = b.submissions ?? (b.ids ? world.forms.filter((f) => b.ids?.includes(f.submissionId)) : world.forms.slice(b.from ?? 0, (b.from ?? 0) + (b.count ?? 1)));
     const results: Array<{ id: string; status: number }> = [];
     for (const f of forms) {
       const body = JSON.stringify([{ subscriptionType: "form.submission", occurredAt: new Date(f.submittedAt).getTime(), objectId: f.submissionId, properties: f }]);

@@ -482,14 +482,15 @@ export function generateWorld(seed = 7, asOf = "2026-10-26"): World {
   // ---- deal registrations -----------------------------------------------------------------------------------------
   const registrations: DealRegistration[] = [];
   const prospects = accounts.filter((a) => a.Type === "Prospect");
-  const approvedByAccount = new Map<string, string>();
+  // The partner programme's rules, by web domain (duplicate accounts can share one): see docs/playbooks/partner-programme.md
+  const approvedByDomain = new Map<string, DealRegistration[]>();
+  const domainOf = (website: string) => website.replace(/^www\./, "");
   for (let i = 0; i < 64; i++) {
     const partner = rng.pick(partners);
     const known = rng.chance(0.6) ? rng.pick(prospects) : null;
     const name = known ? known.Name : `${rng.pick(NAME_A)} ${rng.pick(["Bank", "Versicherung", "Logistik", "Health", "Telecom", "Retail"])} ${rng.int(2, 99)}`;
     const domain = known ? known.Website.replace(/^www\./, "") : `${slug(name)}.example`;
     const amount = Math.round(Math.exp(rng.normal(10.6, 0.7)) / 1000) * 1000;
-    const prior = known ? approvedByAccount.get(known.Id) : undefined;
     const status: DealRegistration["Status"] = i < 14 ? "Approved" : "Pending";
     const reg: DealRegistration = {
       Id: `DR-${String(10_000 + i)}`,
@@ -510,17 +511,19 @@ export function generateWorld(seed = 7, asOf = "2026-10-26"): World {
       ]),
     };
     registrations.push(reg);
-    if (status === "Approved" && known) approvedByAccount.set(known.Id, reg.Id);
+    if (status === "Approved") approvedByDomain.set(domain, [...(approvedByDomain.get(domain) ?? []), reg]);
     if (status === "Pending") {
-      const directOpp = known ? opportunities.find((o) => o.AccountId === known.Id && !o.IsClosed && o.Type === "New Business" && o.Partner_Account__c === null) : undefined;
+      const sameDomain = new Set(accounts.filter((a) => domainOf(a.Website) === domain).map((a) => a.Id));
+      const directOpp = opportunities.find((o) => sameDomain.has(o.AccountId) && !o.IsClosed && o.Type === "New Business" && o.Partner_Account__c === null);
+      const other = (approvedByDomain.get(domain) ?? []).find((r) => r.PartnerId !== partner.Id);
       let conflict: Truth["registrations"][string]["conflict"] = "none";
       let conflictingId: string | null = null;
       if (directOpp) {
         conflict = "direct_open_opportunity";
         conflictingId = directOpp.Id;
-      } else if (prior && registrations.find((r) => r.Id === prior)?.PartnerId !== partner.Id) {
+      } else if (other) {
         conflict = "other_partner";
-        conflictingId = prior;
+        conflictingId = other.Id;
       }
       const lateStage = directOpp && ["Proposal", "Negotiation"].includes(directOpp.StageName);
       truth.registrations[reg.Id] = {

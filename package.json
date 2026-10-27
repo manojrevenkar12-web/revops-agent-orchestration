@@ -12,10 +12,15 @@
   "scripts": {
     "typecheck": "tsc -b packages/core packages/sandbox packages/connectors packages/mcp-server packages/engine packages/orchestrator && tsc -p tsconfig.tests.json",
     "test": "vitest run --root .",
-    "lint": "biome check packages",
+    "lint": "biome check packages scripts evals",
     "sandbox": "tsx packages/sandbox/src/main.ts",
     "orchestrator": "tsx packages/orchestrator/src/main.ts",
-    "mcp": "tsx packages/mcp-server/src/main.ts"
+    "mcp": "tsx packages/mcp-server/src/main.ts",
+    "eval": "tsx evals/run.ts",
+    "gate": "tsx evals/gate.ts",
+    "dev": "tsx packages/orchestrator/src/main.ts --local",
+    "history": "tsx scripts/export-history.ts",
+    "heldout": "tsx evals/run.ts --heldout"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
